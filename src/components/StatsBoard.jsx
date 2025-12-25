@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Ticket, Coins, Theater } from 'lucide-react';
+import { Ticket, Coins, Theater, MapPin, Trophy} from 'lucide-react';
 
 const StatCard = ({ label, value, unit, icon: Icon, delay }) => (
   <motion.div 
@@ -32,12 +32,21 @@ const StatCard = ({ label, value, unit, icon: Icon, delay }) => (
 export default function StatsBoard({ plays }) {
   const totalSpent = plays.reduce((acc, curr) => acc + Number(curr.price || 0), 0);
   const categories = [...new Set(plays.map(p => p.category))];
+  const cities = [...new Set(plays.map(p => p.city))];
+  const cityCount = cities.length;
+  const categoryCount = {};
+  plays.forEach(p => {
+    if (p.category) categoryCount[p.category] = (categoryCount[p.category] || 0) + 1;
+  });
+  const topCategory = Object.keys(categoryCount).reduce((a, b) => categoryCount[a] > categoryCount[b] ? a : b, '暂无');
+
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 mt-4 px-2 max-w-7xl mx-auto">
-      <StatCard label="观演总数" value={plays.length} unit="部" icon={Ticket} delay={0.1} />
-      <StatCard label="年度开销" value={totalSpent} unit="元" icon={Coins} delay={0.2} />
-      <StatCard label="涉猎剧种" value={categories.length} unit="类" icon={Theater} delay={0.3} />
+   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <StatCard label="观演总数" value={plays.length} unit="部" icon={Ticket} delay={0} />
+      <StatCard label="年度开销" value={totalSpent} unit="元" icon={Coins} delay={0.1} />
+      <StatCard label="城市足迹" value={cityCount} unit="座" icon={MapPin} delay={0.2} />
+      <StatCard label="偏好剧种" value={topCategory} unit="" icon={Trophy} delay={0.3} />
     </div>
   );
 }

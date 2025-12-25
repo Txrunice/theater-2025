@@ -126,7 +126,12 @@ export default function TicketStub({ data, onEdit }) {
               <img src={data.image} alt="" className="w-full h-full object-cover" />
            ) : (
               // 这里的 DefaultPoster 已经支持自动换行逻辑
-              <DefaultPoster title={data.title} variant="stub" />
+              <DefaultPoster 
+                  title={data.title} 
+                  date={data.date} 
+                  color={data.color}  // <--- 记得加上这一行！！
+                  variant="card" 
+               />
            )}
          </div>
          <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#141414] via-[#141414]/60 to-transparent z-20 pointer-events-none"></div>

@@ -57,7 +57,12 @@ export default function DramaCard({ data, onEdit, onDelete }) {
             />
           ) : (
             // 调用新的海报组件，它会自动处理长标题
-            <DefaultPoster title={data.title} date={data.date} variant="card" />
+            <DefaultPoster 
+              title={data.title} 
+              date={data.date} 
+              color={data.color}  // <--- 记得加上这一行！！
+              variant="card" 
+            />
           )}
 
           <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-transparent" />

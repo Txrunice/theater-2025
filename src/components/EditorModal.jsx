@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Image as ImageIcon, Plus, Trash2, Loader2, MapPin, Building2, List, Type, Mic2, Sparkles, ScanLine } from 'lucide-react';
+import { X, Image as ImageIcon, Plus, Trash2, Loader2, MapPin, Building2, List, Type, Mic2, Sparkles, ScanLine, Wand2, Palette } from 'lucide-react';
 import { supabase } from '../supabase';
 import { InteractiveRating } from './StarRating';
 
-// 智能建议输入框组件
+// ... (SmartInput 组件代码保持不变，请保留) ...
 const SmartInput = ({ label, value, onChange, suggestions = [], icon: Icon }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const filtered = suggestions.filter(s => s && s.toLowerCase().includes(value.toLowerCase()) && s !== value);
@@ -41,6 +41,9 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
   
   const [uploading, setUploading] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
+  // 新增：颜色生成的状态
+  const [generatingColor, setGeneratingColor] = useState(false);
+  
   const [isMultiTitle, setIsMultiTitle] = useState(false);
   const TITLE_SEPARATOR = " + "; 
 
@@ -49,6 +52,7 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
 
   const [formData, setFormData] = useState({
     title: '', date: '', venue: '', city: '', category: '京剧', image: '', repo: '', price: '', seat_info: '',
+    color: '', // 新增颜色字段
     ratings_detail: { story: 0, acting: 0, visual: 0, music: 0 },
     cast_list: []
   });
@@ -71,13 +75,15 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
       setFormData({
         ...play,
         ratings_detail: play.ratings_detail || { story: 0, acting: 0, visual: 0, music: 0 },
-        cast_list: initialCast
+        cast_list: initialCast,
+        color: play.color || '' // 确保读取颜色
       });
       setIsMultiTitle(!!(play.title && play.title.includes(TITLE_SEPARATOR)));
     } else {
       setFormData({ 
         title: '', date: '', venue: '', city: '', category: '京剧', 
         image: '', repo: '', price: '', seat_info: '',
+        color: '', // 重置颜色
         ratings_detail: { story: 3, acting: 3, visual: 3, music: 3 },
         cast_list: [{ name: '', role: '', group_index: 0 }] 
       });
@@ -111,21 +117,52 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
     }
   };
 
-  // === 核心修改：使用 Supabase Edge Function ===
+  // === 新增：AI 分析颜色 ===
+  const handleAIColorSuggest = async () => {
+    if (!formData.title) {
+        alert("请先输入剧名");
+        return;
+    }
+    setGeneratingColor(true);
+    try {
+        const { data, error } = await supabase.functions.invoke('analyze-program', {
+            body: { 
+                action: 'suggest_color', // 告诉后端这是生成颜色请求
+                title: formData.title,
+                category: formData.category
+            }
+        });
+
+        if (error) throw new Error(error.message);
+        
+        // 解析 AI 返回的颜色 (#XXXXXX)
+        const content = data.choices?.[0]?.message?.content?.trim();
+        // 使用正则提取十六进制颜色代码
+        const colorMatch = content.match(/#[0-9a-fA-F]{6}/);
+        
+        if (colorMatch) {
+            setFormData(prev => ({ ...prev, color: colorMatch[0] }));
+        } else {
+            console.warn("AI未返回有效颜色:", content);
+        }
+
+    } catch (error) {
+        console.error("Color Gen Error:", error);
+    } finally {
+        setGeneratingColor(false);
+    }
+  };
+
+  // ... (保留 handleSiliconFlowRecognition 及其它原有逻辑) ...
   const handleSiliconFlowRecognition = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // 限制图片大小 (例如 4MB)，防止传输超时
     if (file.size > 4 * 1024 * 1024) {
       alert("图片太大，请上传 4MB 以内的图片");
       return;
     }
-
     setRecognizing(true);
-
     try {
-      // 1. 将图片转换为 Base64
       const base64Image = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -133,7 +170,7 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
         reader.onerror = error => reject(error);
       });
 
-      // 2. 调用后端云函数 (注意：函数名 'analyze-program' 必须和你部署的一致)
+      // 调用云函数 (保持原有逻辑，不传 action 默认为 OCR)
       const { data, error } = await supabase.functions.invoke('analyze-program', {
         body: { 
           imageBase64: base64Image,
@@ -141,59 +178,31 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
         }
       });
 
-      if (error) {
-        console.error("Function Error:", error);
-        throw new Error(error.message || "调用云端函数失败");
-      }
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
+      if (error) throw new Error(error.message);
+      if (data.error) throw new Error(data.error);
 
-      // 3. 解析返回结果
       const rawContent = data.choices?.[0]?.message?.content?.trim();
-      
-      if (!rawContent) {
-        throw new Error("AI 未返回有效内容");
-      }
-
-      console.log("AI 原始输出:", rawContent);
+      if (!rawContent) throw new Error("AI 未返回有效内容");
 
       const lines = rawContent.split('\n');
       const results = [];
-      
       lines.forEach(line => {
-        // 兼容中英文冒号
         const parts = line.split(/[:：]/);
         if (parts.length >= 2) {
-          const name = parts[0].trim().replace(/^[-*数\d. ]+/, ''); // 去掉行首的列表符号
+          const name = parts[0].trim().replace(/^[-*数\d. ]+/, '');
           const role = parts.slice(1).join(':').trim();
-          if (name && name.length < 20) { // 简单过滤掉太长的非人名行
-            results.push({ name, role });
-          }
+          if (name && name.length < 20) results.push({ name, role });
         }
       });
 
       if (results.length > 0) {
-        const newCast = results.map(item => ({
-          name: item.name,
-          role: item.role,
-          group_index: 0 
-        }));
-        
-        // 保留原有已输入的有效行
+        const newCast = results.map(item => ({ name: item.name, role: item.role, group_index: 0 }));
         const cleanCurrent = formData.cast_list.filter(c => c.name?.trim() || c.role?.trim());
-        
-        setFormData(prev => ({
-          ...prev,
-          cast_list: [...cleanCurrent, ...newCast]
-        }));
+        setFormData(prev => ({ ...prev, cast_list: [...cleanCurrent, ...newCast] }));
       } else {
         throw new Error("未能从文字中提取出有效的姓名和角色格式");
       }
-
     } catch (error) {
-      console.error("识别详情错误:", error);
       alert('识别失败: ' + error.message);
     } finally {
       setRecognizing(false);
@@ -201,7 +210,7 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
     }
   };
 
-  // --- 辅助逻辑 ---
+  // ... (保留辅助函数: getTitleList, updateTitleRow, addTitleRow, removeTitleRow, etc.) ...
   const getTitleList = () => formData.title ? formData.title.split(TITLE_SEPARATOR) : [''];
   const updateTitleRow = (index, value) => {
     const list = getTitleList();
@@ -229,34 +238,15 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
       });
     setFormData({ ...formData, title: newTitle, cast_list: newCast });
   };
-  const getCastByGroup = (groupIndex) => {
-    return formData.cast_list
-      .map((item, originalIndex) => ({ ...item, originalIndex }))
-      .filter(item => item.group_index === groupIndex);
-  };
+  const getCastByGroup = (groupIndex) => formData.cast_list.map((item, originalIndex) => ({ ...item, originalIndex })).filter(item => item.group_index === groupIndex);
   const updateCast = (originalIndex, field, value) => {
     const newCast = [...formData.cast_list];
     newCast[originalIndex][field] = value;
     setFormData({ ...formData, cast_list: newCast });
   };
-  const addCastRow = (groupIndex = 0) => {
-    setFormData({ 
-      ...formData, 
-      cast_list: [...formData.cast_list, { name: '', role: '', group_index: groupIndex }] 
-    });
-  };
-  const removeCastRow = (originalIndex) => {
-    setFormData({ 
-      ...formData, 
-      cast_list: formData.cast_list.filter((_, i) => i !== originalIndex) 
-    });
-  };
-  const updateRating = (field, value) => {
-    setFormData({ 
-      ...formData, 
-      ratings_detail: { ...formData.ratings_detail, [field]: value } 
-    });
-  };
+  const addCastRow = (groupIndex = 0) => setFormData({ ...formData, cast_list: [...formData.cast_list, { name: '', role: '', group_index: groupIndex }] });
+  const removeCastRow = (originalIndex) => setFormData({ ...formData, cast_list: formData.cast_list.filter((_, i) => i !== originalIndex) });
+  const updateRating = (field, value) => setFormData({ ...formData, ratings_detail: { ...formData.ratings_detail, [field]: value } });
 
   const handleSaveClick = async () => {
     try {
@@ -303,6 +293,7 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-[#111] w-full max-w-2xl rounded-xl border border-white/10 shadow-2xl overflow-hidden z-10 max-h-[90vh] flex flex-col">
         
+        {/* ... (Header 保持不变) ... */}
         <div className="p-5 border-b border-white/5 flex justify-between items-center bg-[#161616] shrink-0">
           <div className="flex items-center gap-3">
              <h3 className="text-lg serif font-bold text-white">Editor</h3>
@@ -316,53 +307,83 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
         </div>
         
         <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
-          {/* 1. 图片上传 */}
+          {/* 1. 图片上传 (保持不变) */}
           <div onClick={() => !uploading && fileInputRef.current.click()} className={`relative w-full h-40 rounded-lg border-2 border-dashed ${uploading ? 'cursor-wait border-zinc-700' : 'cursor-pointer border-zinc-700 hover:border-yellow-600/50'} flex flex-col items-center justify-center overflow-hidden transition-colors`}>
             {formData.image ? <img src={formData.image} className="w-full h-full object-cover opacity-60" /> : <div className="text-zinc-500 flex flex-col items-center"><ImageIcon className="mb-2"/><span className="text-xs">上传海报</span></div>}
             <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" disabled={uploading} />
           </div>
 
-          {/* 2. 基础信息 */}
+          {/* 2. 基础信息 (修改 Title 部分) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              <div>
                <div className="flex justify-between items-center mb-1.5">
                  <label className="block text-xs uppercase tracking-wider text-zinc-500">剧名 Title</label>
-                 <button onClick={toggleMultiTitle} className="text-[10px] flex items-center gap-1 text-zinc-500 hover:text-yellow-500 transition-colors">
-                   {isMultiTitle ? <Type size={12}/> : <List size={12}/>}
-                   {isMultiTitle ? '切换单行' : '折子戏/分段模式'}
-                 </button>
-               </div>
-               
-               {isMultiTitle ? (
-                 <div className="space-y-2 border border-white/10 rounded p-2 bg-[#0f0f0f]">
-                    {titleList.map((titleStr, idx) => (
-                      <div key={idx} className="flex gap-2">
-                         <div className="flex items-center justify-center w-6 h-full text-xs text-zinc-600 font-mono select-none">{idx + 1}</div>
-                         <input 
-                           placeholder={`折子戏/节目 ${idx + 1}`}
-                           value={titleStr} 
-                           onChange={e => updateTitleRow(idx, e.target.value)} 
-                           className="flex-1 bg-[#0a0a0a] border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-yellow-600 outline-none" 
-                         />
-                         <button onClick={() => removeTitleRow(idx)} className="text-zinc-600 hover:text-red-500 p-1">
-                           <Trash2 size={14}/>
-                         </button>
-                      </div>
-                    ))}
-                    <button onClick={addTitleRow} className="w-full py-1 border border-dashed border-zinc-700 text-zinc-500 text-xs hover:border-yellow-600 hover:text-yellow-600 rounded flex justify-center items-center gap-1">
-                      <Plus size={12} /> 添加剧目
+                 
+                 <div className="flex gap-2">
+                    {/* === 颜色生成按钮 === */}
+                    <button 
+                      onClick={handleAIColorSuggest} 
+                      disabled={generatingColor || !formData.title}
+                      title="AI 分析剧名色彩"
+                      className={`text-[10px] flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+                        formData.color ? 'text-white bg-white/10' : 'text-zinc-500 hover:text-indigo-400'
+                      }`}
+                    >
+                      {generatingColor ? <Loader2 size={10} className="animate-spin"/> : <Wand2 size={10}/>}
+                      {formData.color ? '已调色' : 'AI调色'}
+                    </button>
+
+                    <button onClick={toggleMultiTitle} className="text-[10px] flex items-center gap-1 text-zinc-500 hover:text-yellow-500 transition-colors">
+                      {isMultiTitle ? <Type size={12}/> : <List size={12}/>}
+                      {isMultiTitle ? '切换单行' : '折子戏模式'}
                     </button>
                  </div>
-               ) : (
-                 <input 
-                   value={formData.title} 
-                   onChange={e => setFormData({...formData, title: e.target.value})} 
-                   className="w-full bg-[#0a0a0a] border border-white/10 rounded px-3 py-2 text-white focus:border-yellow-600 outline-none" 
-                   placeholder="输入剧目名称"
-                 />
-               )}
+               </div>
+               
+               <div className="relative flex gap-2">
+                  {isMultiTitle ? (
+                     <div className="flex-1 space-y-2 border border-white/10 rounded p-2 bg-[#0f0f0f]">
+                        {titleList.map((titleStr, idx) => (
+                          <div key={idx} className="flex gap-2">
+                             <div className="flex items-center justify-center w-6 h-full text-xs text-zinc-600 font-mono select-none">{idx + 1}</div>
+                             <input 
+                               placeholder={`折子戏/节目 ${idx + 1}`}
+                               value={titleStr} 
+                               onChange={e => updateTitleRow(idx, e.target.value)} 
+                               className="flex-1 bg-[#0a0a0a] border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-yellow-600 outline-none" 
+                             />
+                             <button onClick={() => removeTitleRow(idx)} className="text-zinc-600 hover:text-red-500 p-1">
+                               <Trash2 size={14}/>
+                             </button>
+                          </div>
+                        ))}
+                        <button onClick={addTitleRow} className="w-full py-1 border border-dashed border-zinc-700 text-zinc-500 text-xs hover:border-yellow-600 hover:text-yellow-600 rounded flex justify-center items-center gap-1">
+                          <Plus size={12} /> 添加剧目
+                        </button>
+                     </div>
+                   ) : (
+                     <input 
+                       value={formData.title} 
+                       onChange={e => setFormData({...formData, title: e.target.value})} 
+                       className="flex-1 bg-[#0a0a0a] border border-white/10 rounded px-3 py-2 text-white focus:border-yellow-600 outline-none" 
+                       placeholder="输入剧目名称"
+                     />
+                   )}
+
+                  {/* === 颜色选择器圆点 === */}
+                  <div className="relative shrink-0 w-10 h-10 rounded border border-white/10 overflow-hidden group cursor-pointer" style={{ backgroundColor: formData.color || '#1a1a1a' }}>
+                    <input 
+                      type="color" 
+                      value={formData.color || '#000000'} 
+                      onChange={(e) => setFormData({...formData, color: e.target.value})}
+                      className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                    />
+                    {!formData.color && <Palette size={16} className="absolute inset-0 m-auto text-zinc-600 pointer-events-none"/>}
+                  </div>
+               </div>
              </div>
 
+             {/* ... (其他部分保持不变，直到 Category) ... */}
              <div>
                <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">分类 Category</label>
                <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-[#0a0a0a] border border-white/10 rounded px-3 py-2 text-white focus:border-yellow-600 outline-none">
@@ -370,7 +391,8 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
                </select>
              </div>
           </div>
-
+          
+          {/* ... (后续代码完全保持不变) ... */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <SmartInput label="城市 City" value={formData.city} onChange={v => setFormData({...formData, city: v})} suggestions={existingCities} icon={MapPin} />
             <SmartInput label="剧场 Venue" value={formData.venue} onChange={v => setFormData({...formData, venue: v})} suggestions={existingVenues} icon={Building2} />
@@ -394,10 +416,9 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
             </div>
           </div>
 
-          {/* 4. 演员表 / 节目单 */}
           <div className={`rounded-lg transition-colors ${recognizing ? 'bg-indigo-500/5' : ''}`}>
-            
-            <div className="flex justify-between items-center mb-2">
+             {/* 演员表部分保持不变 */}
+             <div className="flex justify-between items-center mb-2">
               <label className="text-xs uppercase tracking-wider text-zinc-500 flex items-center gap-2">
                  {isConcert ? <Mic2 size={12} className="text-yellow-600"/> : <Sparkles size={12} className="text-indigo-400"/>}
                  {castLabels.title}
@@ -478,7 +499,6 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
                           <Plus size={10}/> 添加
                         </button>
                       </div>
-                      
                       <div className="space-y-2">
                         {groupCast.map((cast) => (
                           <div key={cast.originalIndex} className="flex gap-2 items-center">
