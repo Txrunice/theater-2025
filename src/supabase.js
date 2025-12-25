@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
-// ⚠️ 替换成你自己的 Supabase URL 和 Anon Key
-const supabaseUrl = 'https://gmvqnqvzmsxgntggobtb.supabase.co'
-const supabaseKey = 'sb_publishable_mR2aOGvkhLvY_zZjZ6c4FQ_kGkuu8OV'
+// 使用 import.meta.env 读取环境变量
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
