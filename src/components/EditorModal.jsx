@@ -4,9 +4,6 @@ import { X, Image as ImageIcon, Plus, Trash2, Loader2, MapPin, Building2, List, 
 import { supabase } from '../supabase';
 import { InteractiveRating } from './StarRating';
 
-// === 配置区域 ===
-const ENV_API_KEY = import.meta.env.VITE_SILICONFLOW_KEY || ''; 
-
 // 智能建议输入框组件
 const SmartInput = ({ label, value, onChange, suggestions = [], icon: Icon }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -114,20 +111,21 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
     }
   };
 
-  // === 增强版 AI 识别逻辑 ===
-const handleSiliconFlowRecognition = async (e) => {
+  // === 核心修改：使用 Supabase Edge Function ===
+  const handleSiliconFlowRecognition = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    let apiKey = ENV_API_KEY;
-    if (!apiKey) {
-      apiKey = window.prompt("请输入硅基流动(SiliconFlow) API Key (sk-xxxx):");
-      if (!apiKey) return;
+    // 限制图片大小 (例如 4MB)，防止传输超时
+    if (file.size > 4 * 1024 * 1024) {
+      alert("图片太大，请上传 4MB 以内的图片");
+      return;
     }
 
     setRecognizing(true);
 
     try {
+      // 1. 将图片转换为 Base64
       const base64Image = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -135,50 +133,32 @@ const handleSiliconFlowRecognition = async (e) => {
         reader.onerror = error => reject(error);
       });
 
-      const response = await fetch("https://api.siliconflow.cn/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "Qwen/Qwen2.5-VL-72B-Instruct", 
-          messages: [
-            {
-              role: "user",
-              content: [
-                { 
-                  type: "text", 
-                  text: `请分析这张${formData.category}的演员表/节目单图片。
-                  提取所有的'姓名'和'饰演角色(或曲目)'。
-                  请严格按照以下文本格式输出，每行一个，不要输出任何其他文字：
-                  姓名:角色
-                  姓名:角色` 
-                },
-                { 
-                  type: "image_url", 
-                  image_url: { url: base64Image } 
-                }
-              ]
-            }
-          ],
-          max_tokens: 2048,
-          temperature: 0.1
-        })
+      // 2. 调用后端云函数 (注意：函数名 'analyze-program' 必须和你部署的一致)
+      const { data, error } = await supabase.functions.invoke('analyze-program', {
+        body: { 
+          imageBase64: base64Image,
+          category: formData.category 
+        }
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error?.message || "API 请求失败");
+      if (error) {
+        console.error("Function Error:", error);
+        throw new Error(error.message || "调用云端函数失败");
+      }
+      
+      if (data.error) {
+        throw new Error(data.error);
       }
 
-      const data = await response.json();
-      const rawContent = data.choices[0].message.content.trim();
+      // 3. 解析返回结果
+      const rawContent = data.choices?.[0]?.message?.content?.trim();
       
-      console.log("AI 原始输出:", rawContent); // 调试用
+      if (!rawContent) {
+        throw new Error("AI 未返回有效内容");
+      }
 
-      // === 使用正则解析非 JSON 格式，容错率极高 ===
-      // 匹配格式如 "张三:林冲" 或 "张三：林冲" 或 "姓名:角色"
+      console.log("AI 原始输出:", rawContent);
+
       const lines = rawContent.split('\n');
       const results = [];
       
@@ -214,12 +194,13 @@ const handleSiliconFlowRecognition = async (e) => {
 
     } catch (error) {
       console.error("识别详情错误:", error);
-      alert('识别失败: ' + error.message + '\n\n提示：请确保上传的图片中“演员/节目”文字清晰，且背景不宜过杂。');
+      alert('识别失败: ' + error.message);
     } finally {
       setRecognizing(false);
       if(programInputRef.current) programInputRef.current.value = '';
     }
   };
+
   // --- 辅助逻辑 ---
   const getTitleList = () => formData.title ? formData.title.split(TITLE_SEPARATOR) : [''];
   const updateTitleRow = (index, value) => {
@@ -423,7 +404,6 @@ const handleSiliconFlowRecognition = async (e) => {
               </label>
 
               <div className="flex gap-2">
-                {/* 所有的模式现在都可以识别 */}
                 <div className="relative">
                   <button 
                     onClick={() => !recognizing && programInputRef.current.click()}
