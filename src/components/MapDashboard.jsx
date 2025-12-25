@@ -56,7 +56,7 @@ export default function MapDashboard({ plays = [] }) {
   }, [selectedCity, plays]);
 
   useEffect(() => {
-    fetch('https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json')
+    fetch('/china.json')
       .then(response => response.json())
       .then(data => {
         echarts.registerMap('china', data);
