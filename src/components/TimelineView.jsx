@@ -150,7 +150,7 @@ export default function TimelineView({ plays }) {
                                 {p.image ? (
                                   <img src={p.image} className="w-full h-full object-cover"/>
                                 ) : (
-                                  <DefaultPoster title={p.title} variant="mini" />
+                                  <DefaultPoster title={p.title} variant="stub" />
                                 )}
                             </div>
                          </div>

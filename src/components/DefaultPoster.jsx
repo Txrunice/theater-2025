@@ -27,7 +27,7 @@ export default function DefaultPoster({ title = '', date = '', color = null, var
   const isChinese = /[\u4e00-\u9fa5]/.test(title);
   
   // 2. 布局判断
-  const isLongText = titleParts.some(part => part.length > 8) || titleParts.length > 4;
+  const isLongText = titleParts.some(part => part.length > 5) || titleParts.length > 4;
   const useVerticalLayout = isChinese && !isLongText; 
 
   let config = {
