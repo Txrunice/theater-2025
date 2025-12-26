@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 // 引入你目录结构中的坐标文件
 import { CHINA_CITIES_COORDINATES } from '../constants/cityCoordinates'; 
 import { X, ChevronRight, ChevronLeft, Quote, Sparkles, MapPin, Calendar, Trophy, Clock, Repeat, Flame, Coffee, Activity, ArrowRight } from 'lucide-react';
+import mapData from '../assets/china.json'
 
 // ==========================================
 // 地图投影配置 (核心算法)
@@ -29,39 +30,33 @@ const project = ([lng, lat]) => {
 // ==========================================
 const CityMapAnimation = ({ cityVisits }) => {
     // 1. 地图背景数据 (保持原有逻辑，存JSX虽不是最佳实践但在静态数据下可接受)
-    const [mapPath, setMapPath] = useState([]);
-
-    useEffect(() => {
-        fetch('/china.json')
-            .then(res => res.json())
-            .then(data => {
-                const paths = [];
-                data.features.forEach((feature, index) => {
-                    const geometry = feature.geometry;
-                    const drawPolygon = (rings) => {
-                        let d = "";
-                        rings.forEach((ring) => {
-                            ring.forEach((point, j) => {
-                                const { x, y } = project(point);
-                                if (j === 0) d += `M${x},${y}`;
-                                else d += `L${x},${y}`;
-                            });
-                            d += "Z ";
-                        });
-                        return d;
-                    };
-                    // 这里的 key 使用了前缀 p- 和 mp-，是安全的
-                    if (geometry.type === "Polygon") {
-                        paths.push(<path key={`p-${index}`} d={drawPolygon(geometry.coordinates)} className="fill-white/5 stroke-white/10" strokeWidth="0.5" />);
-                    } else if (geometry.type === "MultiPolygon") {
-                        geometry.coordinates.forEach((polygon, i) => {
-                            paths.push(<path key={`mp-${index}-${i}`} d={drawPolygon(polygon)} className="fill-white/5 stroke-white/10" strokeWidth="0.5" />);
-                        });
-                    }
+    const mapPath = useMemo(() => {
+        const paths = [];
+        // 直接使用 mapData，不需要 fetch
+        mapData.features.forEach((feature, index) => {
+            const geometry = feature.geometry;
+            const drawPolygon = (rings) => {
+                let d = "";
+                rings.forEach((ring) => {
+                    ring.forEach((point, j) => {
+                        const { x, y } = project(point);
+                        if (j === 0) d += `M${x},${y}`;
+                        else d += `L${x},${y}`;
+                    });
+                    d += "Z ";
                 });
-                setMapPath(paths);
-            });
-    }, []);
+                return d;
+            };
+            if (geometry.type === "Polygon") {
+                paths.push(<path key={`p-${index}`} d={drawPolygon(geometry.coordinates)} className="fill-white/5 stroke-white/10" strokeWidth="0.5" />);
+            } else if (geometry.type === "MultiPolygon") {
+                geometry.coordinates.forEach((polygon, i) => {
+                    paths.push(<path key={`mp-${index}-${i}`} d={drawPolygon(polygon)} className="fill-white/5 stroke-white/10" strokeWidth="0.5" />);
+                });
+            }
+        });
+        return paths;
+    }, []); // 空依赖数组，只计算一次
 
     // 2. 逻辑处理：计算坐标点 (保持不变)
     const { uniquePath, cityCount, viewBox } = useMemo(() => {

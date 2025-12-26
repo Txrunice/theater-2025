@@ -27,71 +27,54 @@ function getCityVisits(records: any[]) {
     return visits;
 }
 
+
 // ==========================================
-// 2. 新增工具函数：计算经济与生活统计 (修复前端报错的核心)
+// 3. 工具函数：计算习惯 (Top City & Busy Day)
 // ==========================================
-function calculateStats(records: any[]) {
-    let totalCost = 0;
-    const monthCosts: Record<string, number> = {};
-    let totalDuration = 0; // 估算时长
+function calculateHabits(records: any[]) {
+    const cityCounts: Record<string, number> = {};
+    const dayCounts: Record<string, number> = {};
+    const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
     records.forEach(r => {
-        // 1. 金额统计
-        const price = parseFloat(r.price) || 0;
-        totalCost += price;
-
-        // 2. 月份统计
+        // 1. 统计城市频率
+        if (r.city) {
+            const city = r.city.replace('市', ''); // 统一去掉“市”
+            cityCounts[city] = (cityCounts[city] || 0) + 1;
+        }
+        
+        // 2. 统计星期频率
         const date = new Date(r.date);
         if (!isNaN(date.getTime())) {
-            const monthKey = `${date.getMonth() + 1}月`;
-            monthCosts[monthKey] = (monthCosts[monthKey] || 0) + price;
-        }
-
-        // 3. 时长估算 (如果数据里没有 duration，默认一场戏 2.5 小时)
-        // 也可以根据 r.category 微调，比如 "话剧" 2.5h, "音乐剧" 3h
-        totalDuration += 2.5; 
-    });
-
-    // 找出消费最高的月份
-    let maxMonth = "-";
-    let maxMonthCost = 0;
-    Object.entries(monthCosts).forEach(([month, cost]) => {
-        if (cost > maxMonthCost) {
-            maxMonthCost = cost;
-            maxMonth = month;
+            const dayName = days[date.getDay()];
+            dayCounts[dayName] = (dayCounts[dayName] || 0) + 1;
         }
     });
 
-    // 计算一些趣味数据
-    // 假设 1 部电影 2 小时
-    const movieCount = Math.floor(totalDuration / 2);
-    // 假设看戏消耗热量：坐着看戏约 80kcal/h (基础代谢+脑力激荡)
-    const caloriesBurned = Math.floor(totalDuration * 80); 
-    // 换算成跑步公里数 (约 60kcal/km)
-    const runDistance = (caloriesBurned / 60).toFixed(1);
-    
-    // 每周平均花费
-    const weeksInYear = 52;
-    const weeklyCost = (totalCost / weeksInYear).toFixed(0);
+    // 找出最常去的城市
+    let favCity = "未知";
+    let maxCityCount = 0;
+    Object.entries(cityCounts).forEach(([city, count]) => {
+        if (count > maxCityCount) {
+            maxCityCount = count;
+            favCity = city;
+        }
+    });
+
+    // 找出最忙碌的一天
+    let busyDay = "周末";
+    let maxDayCount = 0;
+    Object.entries(dayCounts).forEach(([day, count]) => {
+        if (count > maxDayCount) {
+            maxDayCount = count;
+            busyDay = day;
+        }
+    });
 
     return {
-        time: {
-            totalHours: totalDuration.toFixed(1),
-            activityName: "电影",
-            activityCount: movieCount
-        },
-        money: {
-            totalCost: totalCost.toFixed(0),
-            maxMonth: maxMonth,
-            maxMonthCost: maxMonthCost.toFixed(0)
-        },
-        life: {
-            costDisplay: weeklyCost,
-            timeframeLabel: "Week",
-            description: `这笔预算相当于你每周少喝 ${Math.max(1, Math.floor(Number(weeklyCost) / 35))} 杯咖啡，却换来了 ${records.length} 场灵魂的共振。`,
-            energyText: `-${caloriesBurned} kcal`,
-            runDistance: runDistance
-        }
+        busyDay,
+        favCity,
+        totalCities: Object.keys(cityCounts).length
     };
 }
 
@@ -170,27 +153,64 @@ serve(async (req: Request) => {
       ]
     }
     
-    // ... (模式 2 和 模式 3 的代码保持不变，省略以节省篇幅，请保留你原有的代码) ...
-    else if (action === 'suggest_color') {
-       // ... 保持你原有的 suggest_color 代码 ...
-       model = "deepseek-ai/DeepSeek-V3";
-       maxTokens = 50;
-       temperature = 0.8;
-       systemPrompt = `你是一位擅长色彩心理学的视觉设计师... (保持原样)`; // 略
-       userContent = [{ type: "text", text: `剧名：${title}\n分类：${category}\n请给出海报主题色：` }];
-    }
-    else {
-       // ... 保持你原有的 extract_cast 代码 ...
-       model = "Qwen/Qwen2.5-VL-72B-Instruct";
-       maxTokens = 2048;
-       temperature = 0.1;
-       systemPrompt = "";
-       userContent = [
-         { type: "text", text: `请分析这张${category || '演出'}的演员表... (保持原样)` },
-         { type: "image_url", image_url: { url: imageBase64 } }
-       ];
-    }
 
+    // =========================================================
+// 模式 2: 根据剧名生成颜色建议
+// =========================================================
+
+else if (action === 'suggest_color') {
+   model = "deepseek-ai/DeepSeek-V3";
+   maxTokens = 50;
+   temperature = 0.6; 
+   systemPrompt = `你是一位擅长色彩心理学的视觉设计师，需要为戏剧海报推荐主题色。请根据用户提供的“剧目名称”和“分类”，分析其内容意象，推荐一个最能传达该剧氛围的主题色（Hex Color）。请严格遵循以下要求
+
+   设计逻辑：
+   1. 🌈 色彩多样性原则
+    - 每个推荐必须唯一，避免重复使用相同色系
+    - 探索小众但高级的色调（如：灰调莫兰迪色/荧光色/渐变过渡色）
+    - 允许混合色（例如蓝绿色#0D98BA）和实验色（紫红色#C71585）
+
+  2. 深度语义分析法（禁止关键字匹配）
+    - 第一步：解析剧目核心情感（示例："悲剧"=沉重感→选择有历史质感的浊色调）
+    - 第二步：提取视觉元素（示例："海"→不止深蓝，可推荐带灰度的海沫绿#9FE2BF）
+    - 第三步：考虑受众感知（青春剧避免暗色，用活力珊瑚橙#FF7F50）
+
+  3. 严禁约束
+    - ✖ 禁止输出任何文字解释
+    - ✖ 禁止重复最近3次推荐过的颜色
+
+  4. 输出规范
+    - 仅输出6位大写Hex代码（如：#E6E6FA）
+    - 必须是网页安全色
+    - 优先选择有故事感的色调（例如：战争剧→弹药黑#1B1B1B 而非纯黑）
+    - 颜色要耐看，适合做背景`
+
+
+   userContent = [
+     { type: "text", text: `剧名：${title}\n分类：${category}\n请给出海报主题色：` }
+   ]
+}
+
+// =========================================================
+// 模式 3: 识别图片演员表 (原功能 - 保持 Qwen-VL 和原 Prompt)
+// =========================================================
+else {
+   model = "Qwen/Qwen2.5-VL-72B-Instruct";
+   maxTokens = 4096;
+   temperature = 0.1;
+   systemPrompt = ""; 
+   userContent = [
+     { 
+       type: "text", 
+       text: `请分析这张${category || '演出'}的演员表/节目单图片。
+       提取所有的'姓名'和'饰演角色(或曲目)'。
+       请严格按照以下文本格式输出，每行一个，不要输出任何其他文字：
+       姓名:角色
+       姓名:角色` 
+     },
+     { type: "image_url", image_url: { url: imageBase64 } }
+   ]
+}
     // === 发送请求 ===
     const response = await fetch("https://api.siliconflow.cn/v1/chat/completions", {
       method: "POST",
@@ -227,28 +247,16 @@ serve(async (req: Request) => {
             // 2. 解析 AI 返回的 JSON
             const reportObj = JSON.parse(content);
             
-            // 3. 【新增】计算 accurate stats (Money, Life, Time)
-            // 这里的 records 是前端传来的原始完整数据
-            const computedStats = calculateStats(records || []);
-            
-            // 4. 【原有】计算 accurate city visits
+            // 4. 计算 accurate city visits
             const accurateCityVisits = getCityVisits(records || []);
 
-            // 5. 【原有】计算 accurate habits (busyDay, favCity)
-            // 你之前的 habits 是 AI 生成的，这里建议也用代码算，或者简单处理
-            // 为简单起见，这里我们补全 extraStats，并注入 cityVisits
-            
+            // 5  计算 accurate habits (Top City, Busy Day)
+            // 这行代码会覆盖 AI 算错或没算出来的 "未知"
+            reportObj.habits = calculateHabits(records || []);
+
             // 注入数据
-            reportObj.extraStats = computedStats; // 修复前端 SlideEconomics 报错的关键
             reportObj.cityVisits = accurateCityVisits; // 修复地图数据
             
-            // 如果 AI 漏掉了 habits，我们可以给一个默认值
-            if (!reportObj.habits) {
-                reportObj.habits = { busyDay: "周末", favCity: "未知", totalCities: 0 };
-            }
-            // 强制修正 totalCities
-            reportObj.habits.totalCities = new Set(records.map((r:any) => r.city)).size;
-
             // 重新序列化
             content = JSON.stringify(reportObj);
         } catch (e) {
