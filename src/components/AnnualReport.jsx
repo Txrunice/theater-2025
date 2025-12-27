@@ -423,12 +423,13 @@ const SlideSpaceTime = ({ data }) => {
 // === Slide 4: 经济 (Economics) ===
 const SlideEconomics = ({ data }) => {
     const { life, money } = data.extraStats;
+    
     return (
         <div className="flex flex-col h-full px-6 py-8 justify-between relative overflow-hidden">
-             {/* 巨大的背景装饰 */}
+             {/* 巨大的背景装饰 - 可以考虑根据类型变淡或变化 */}
              <Coffee className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/5 w-[500px] h-[500px] pointer-events-none rotate-12" />
 
-            <div className="flex-shrink-0 text-center mt-6 z-10">
+            <div className="flex-shrink-0 text-center mt-1 z-10">
                 <p className="text-gray-500 text-xs uppercase tracking-[0.4em] mb-4">Total Expenditure</p>
                 <div className="relative inline-block">
                     <h2 className="text-[5rem] md:text-[8rem] font-black font-serif text-gold drop-shadow-2xl leading-none">
@@ -445,33 +446,86 @@ const SlideEconomics = ({ data }) => {
                 className="bg-[#151921]/90 backdrop-blur-xl rounded-[2.5rem] border border-white/10 p-8 md:p-12 shadow-2xl z-10 flex flex-col justify-between min-h-[45%]"
             >
                 <div>
-                    <span className="text-xs text-cinnabar border border-cinnabar/30 px-3 py-1 rounded uppercase font-bold tracking-wider mb-4 inline-block">
-                        Daily / Weekly
+                    {/* 修改1：标签改为动态，显示当前的统计跨度 */}
+                    <span className="text-xs text-gold border border-gold/30 px-3 py-1 rounded uppercase font-bold tracking-wider mb-4 inline-block">
+                        {life.timeframeLabelEn} Consumption
                     </span>
-                    <div className="flex items-end gap-3 mb-4">
+                    
+                    <div className="flex items-end gap-3 mb-2">
                         <span className="text-5xl md:text-6xl font-serif text-white leading-none">¥{life.costDisplay}</span>
                         <span className="text-xl text-gray-500 mb-1">/ {life.timeframeLabel}</span>
                     </div>
-                    <p className="text-lg text-gray-400 italic leading-relaxed pl-1">
+                    
+                    {/* 修改2：调大行高，因为 description 现在可能包含“折合每月”的两段式文案 */}
+                    <p className="text-lg text-gray-300 italic leading-relaxed pl-1 font-serif">
                         {life.description}
                     </p>
                 </div>
 
-                <div className="bg-black/40 rounded-2xl p-6 border border-white/5 grid grid-cols-[1fr_auto_1fr] gap-4 items-center mt-6">
-                    <div className="flex flex-col">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Flame size={16} className="text-cinnabar" />
-                            <span className="text-xs text-gray-500 uppercase tracking-wider">Energy</span>
+                {/* 底部能量转化看板 */}
+                <div className="mt-2 space-y-2">
+
+                    {/* 视觉转化卡片 */}
+                    <div className="relative bg-black/40 rounded-[2rem] p-6 border border-white/5 overflow-hidden group">
+                        {/* 装饰线条 - 连接两端 */}
+                        <div className="absolute top-1/2 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent pointer-events-none" />
+
+                        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center relative z-10">
+                            {/* 左侧：摄入减少 */}
+                            <div className="flex flex-col items-start">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="p-2 bg-cinnabar/10 rounded-lg">
+                                        <Flame size={18} className="text-cinnabar animate-pulse" />
+                                    </div>
+                                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Intake Reduction</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-3xl font-serif font-black text-white">-{life.kcalValue}</span>
+                                    <span className="text-xs text-gray-500 font-sans uppercase">kcal</span>
+                                </div>
+                            </div>
+                            
+                            {/* 中间转换图标 */}
+                            <div className="flex flex-col items-center justify-center">
+                                <div className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center bg-ink-900 group-hover:border-gold/50 transition-colors duration-500">
+                                    <ArrowRight size={20} className="text-gray-500 group-hover:text-gold transition-colors" />
+                                </div>
+                            </div>
+                            
+                            {/* 右侧：等效运动 */}
+                            <div className="flex flex-col items-end">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Running Equivalent</span>
+                                    <div className="p-2 bg-blue-400/10 rounded-lg">
+                                        <Activity size={18} className="text-blue-400" />
+                                    </div>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-3xl font-serif font-black text-white">{life.runDistance}</span>
+                                    <span className="text-xs text-gray-500 font-sans uppercase">km</span>
+                                </div>
+                            </div>
                         </div>
-                        <span className="text-2xl text-white font-bold">-{life.energyText.replace(/[^0-9]/g, '')} kcal</span>
                     </div>
-                    <div className="text-gray-700 opacity-50"><ArrowRight size={24} /></div>
-                    <div className="flex flex-col items-end">
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs text-gray-500 uppercase tracking-wider">Running</span>
-                            <Activity size={16} className="text-blue-400" />
-                        </div>
-                        <span className="text-2xl text-white font-bold">{life.runDistance} km</span>
+                    {/* 叙述文字 - 增加感性的文字联系 */}
+                    <div className="px-2 mt-4 border-l border-gold/20 ml-1">
+                        <p className="text-gray-500 text-sm md:text-base leading-relaxed font-serif italic tracking-wider">
+                            {/* 第一行：哲学感叙述，独立成行 */}
+                            <span className="block mb-2 opacity-80">
+                                剧场的精神食粮为你抵消了物质的沉重。
+                            </span>
+                            
+                            {/* 第二、三行合并：解释性叙述，保持连贯 */}
+                            <span className="inline-block">
+                                {life.timeframeLabel}节省下的 
+                                <span className="text-gray-300 font-sans mx-1 not-italic">{life.kcalValue} kcal</span> 
+                                热量，若是化作脚步，足以支撑你在城市中漫跑 
+                                <span className="text-gold font-serif font-bold italic mx-1 text-xl drop-shadow-[0_0_8px_rgba(255,215,0,0.2)]">
+                                    {life.runDistance}
+                                </span> 
+                                公里。
+                            </span>
+                        </p>
                     </div>
                 </div>
             </motion.div>
@@ -586,8 +640,22 @@ const SlideFinal = ({ data, onRegenerate }) => (
 // 2. 主组件 (包含信封、信件、大屏逻辑)
 // ==========================================
 export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
-  const [viewState, setViewState] = useState('envelope'); 
-  const [currentSlide, setCurrentSlide] = useState(0);
+   // *** 每次打开时，重置 viewState 和 currentSlide ***
+  // 这里利用 isOpen 的变化来重置状态
+  const [viewState, setViewState] = useState(isOpen ? 'envelope' : null);
+  const [currentSlide, setCurrentSlide] = useState(isOpen ? 0 : null);
+
+  // 当 props.isOpen 变化时，如果变为 true，则重置状态
+  React.useEffect(() => {
+    if (isOpen) {
+      setViewState('envelope');
+      setCurrentSlide(0);
+    } else {
+      // 组件关闭时，清空状态，避免下次打开时仍有残留
+      setViewState(null);
+      setCurrentSlide(null);
+    }
+  }, [isOpen]);
 
   const slides = [
       { id: 'overview', component: SlideOverview },
@@ -663,12 +731,43 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                         
                         <div className="mb-8 mt-4 flex justify-between items-end border-b border-ink-900/10 pb-6">
                             <h2 className="text-2xl md:text-3xl font-bold tracking-widest uppercase text-ink-900">Dear Audience,</h2>
-                            <span className="font-mono text-gray-400 text-sm">Dec 31, 2025</span>
                         </div>
                         
                         <div className="prose prose-lg prose-p:text-ink-800 prose-p:leading-loose text-justify max-h-[60vh] overflow-y-auto custom-scrollbar pr-4 mb-10">
-                            <p className="whitespace-pre-wrap">{data.letter}</p>
+                            {/* 使用 replace 将字面量的 \n 替换为真正的换行符 */}
+                            {/* === 修改开始：将信件切分为段落渲染 === */}
+                            <div className="font-serif">
+                                {data.letter && data.letter.replace(/\\n/g, '\n').split(/\n+/).map((para, i) => (
+                                    para.trim() && (
+                                        <p key={i} className="mb-6 indent-8 text-ink-900/90 leading-loose">
+                                            {para}
+                                        </p>
+                                    )
+                                ))}
+                            </div>
+
                         </div>
+
+                        {/* 2. 新增：固定落款区域 */}
+                            {/* 2. 新增：艺术落款区域 (签名 + 仿真印章) */}
+                            <div className="mt-12 pt-8 border-t border-ink-900/10 flex justify-end">
+                                <div className="relative pr-4">
+                                    
+                                    {/* A. 名字 (模拟手写书法效果) */}
+                                    <div className="font-serif text-2xl md:text-3xl text-ink-900 font-bold italic tracking-wider transform -rotate-2 z-10 relative" style={{ fontFamily: '"Playfair Display", "Songti SC", "SimSun", serif' }}>
+                                        AI 热情的冰冻生菜
+                                    </div>
+
+                                    {/* B. 日期 (打字机风格，显得严谨) */}
+                                    <div className="font-mono text-xs text-gray-400 tracking-[0.2em] text-right mt-2 uppercase">
+                                        {new Date().toLocaleDateString('en-US', { 
+                                            year: 'numeric', 
+                                            month: 'short', 
+                                            day: 'numeric' 
+                                        }).toUpperCase()}
+                                    </div>
+                                </div>
+                            </div>
 
                         <div className="flex justify-between items-center pt-6 border-t border-ink-900/10">
                              <button onClick={onRegenerate} className="flex items-center gap-2 text-sm text-gray-400 hover:text-cinnabar transition-colors group">

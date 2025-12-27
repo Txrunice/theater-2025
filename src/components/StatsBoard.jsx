@@ -6,23 +6,22 @@ import AnnualReport from './AnnualReport';
 
 // === 饮品数据库 ===
 const BEVERAGES = [
-  { name: "霸王茶姬·伯牙绝弦", price: 16, kcal: 268 },
-  { name: "茶百道·豆乳玉麒麟", price: 14, kcal: 300 },
-  { name: "益禾堂·薄荷奶绿", price: 9, kcal: 192 },
-  { name: "蜜雪冰城·冰鲜柠檬水", price: 4, kcal: 120 },
-  { name: "瑞幸咖啡·生椰拿铁", price: 9.9, kcal: 180 },
+  { name: "星巴克·焦糖玛奇朵", price: 37, kcal: 250 },
   { name: "一点点·冰淇淋红茶", price: 15, kcal: 210 },
-  { name: "可乐", price: 3, kcal: 225 },
-  { name: "雪碧", price: 3, kcal: 200 },
-  { name: "幸运咖·青提香柠茶", price: 9, kcal: 150 }
+  { name: "霸王茶姬·伯牙绝弦", price: 16, kcal: 268 },
+  { name: "奈雪的茶·霸气橙子", price: 19, kcal: 230 },
+  { name: "蜜雪冰城·冰鲜柠檬水", price: 4, kcal: 120 },
+  { name: "益禾堂·薄荷奶绿", price: 9, kcal: 192 },
+  { name: "幸运咖·青提香柠茶", price: 9, kcal: 150 },
+  { name: "瑞幸咖啡·生椰拿铁", price: 9.9, kcal: 180 },
+  { name: "茶百道·豆乳玉麒麟", price: 14, kcal: 300 }
 ];
 
 // === 时间转化库 ===
 const TIME_ACTIVITIES = [
-  { name: "读完《百年孤独》", minutes: 900 }, // 约15小时
+  { name: "读完《百年孤独》", minutes: 900 },
   { name: "刷完一部经典电影", minutes: 120 },
   { name: "听完一张周杰伦的专辑", minutes: 45 },
-  { name: "进行一次深度冥想", minutes: 20 },
   { name: "完成一次5公里慢跑", minutes: 35 },
   { name: "上完一节数学课", minutes: 45 }
 ];
@@ -66,7 +65,7 @@ export default function StatsBoard({ plays }) {
   const hasReport = !!reportData; 
   const [notification, setNotification] = useState(hasReport ? 'success' : null);
 
-  // 基础数据统计
+  // 基础数据统计 (用于上方卡片)
   const totalSpent = plays.reduce((acc, curr) => acc + Number(curr.price || 0), 0);
   const cities = [...new Set(plays.map(p => p.city))];
   const cityCount = cities.length;
@@ -76,75 +75,143 @@ export default function StatsBoard({ plays }) {
   });
   const topCategory = Object.keys(categoryCount).reduce((a, b) => categoryCount[a] > categoryCount[b] ? a : b, '暂无');
 
-  // === 核心逻辑：生成生活方式统计 (奶茶/热量/跑步) ===
-  const generateLifestyleStats = (totalMoney) => {
-    const avgDaily = totalMoney / 365;
-    const avgWeekly = totalMoney / 52;
-    const avgMonthly = totalMoney / 12;
+  // ==========================================
+  // 1. 工具函数：计算准确的城市足迹
+  // ==========================================
+  const getCityVisits = (records) => {
+    const sorted = [...records].sort((a, b) => 
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
 
-    let timeframe = 'daily';
-    let baseAmount = avgDaily;
-    let timeframeLabel = '每天';
-
-    // 动态决定时间维度
-    if (avgDaily < 5) {
-        if (avgWeekly < 10) {
-            timeframe = 'monthly';
-            baseAmount = avgMonthly;
-            timeframeLabel = '每月';
-        } else {
-            timeframe = 'weekly';
-            baseAmount = avgWeekly;
-            timeframeLabel = '每周';
+    const visits = [];
+    
+    sorted.forEach(record => {
+        if (!record.city) return;
+        // 核心逻辑：只有当这是第一条记录，或者当前城市与上一条记录的城市不同时才添加
+        // 这解决了连续多天在同一城市看剧导致地图路径点密集重叠的问题
+        if (visits.length === 0 || visits[visits.length - 1].city !== record.city) {
+            visits.push({
+                city: record.city,
+                date: record.date
+            });
         }
-    }
+    });
+    return visits;
+  };
 
-    // 随机选择 1-2 种饮品进行对比
-    const shuffledBevs = [...BEVERAGES].sort(() => 0.5 - Math.random());
-    const selectedBevs = shuffledBevs.slice(0, Math.random() > 0.5 ? 2 : 1);
-    
-    // 计算逻辑
-    const itemsText = selectedBevs.map(bev => {
-        const count = (baseAmount / bev.price).toFixed(1);
-        if (parseFloat(count) < 1) return null; // 如果甚至买不起一杯，就不显示这个
-        return {
-            name: bev.name,
-            count: count,
-            totalKcal: Math.floor(count * bev.kcal)
-        };
-    }).filter(Boolean);
+  // ==========================================
+  // 2. 工具函数：计算习惯 (Top City & Busy Day) 
+  // ==========================================
+  const calculateHabits = (records) => {
+    const cityCounts = {};
+    const dayCounts = {};
+    // 保持与后端一致的中文数组，如果你希望显示英文，可改为 ['Sunday', 'Monday', ...]
+    const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
-    // 如果金额太少连最便宜的都买不起
-    if (itemsText.length === 0) {
-        return {
-            timeframeLabel,
-            costDisplay: Math.floor(baseAmount),
-            description: `相当于${timeframeLabel}少吃一顿大餐，保持了极致的身材管理。`,
-            runDistance: 0
-        };
-    }
+    records.forEach(r => {
+        // 1. 统计城市频率
+        if (r.city) {
+            const city = r.city.replace('市', ''); // 统一去掉“市”
+            cityCounts[city] = (cityCounts[city] || 0) + 1;
+        }
+        
+        // 2. 统计星期频率
+        const date = new Date(r.date);
+        if (!isNaN(date.getTime())) {
+            const dayName = days[date.getDay()];
+            dayCounts[dayName] = (dayCounts[dayName] || 0) + 1;
+        }
+    });
 
-    const totalSavedKcal = itemsText.reduce((acc, curr) => acc + curr.totalKcal, 0);
-    // 慢跑 1km 约消耗 60-70 kcal，取 65
-    const runDistance = (totalSavedKcal / 65).toFixed(1);
+    // 找出最常去的城市
+    let favCity = "未知";
+    let maxCityCount = 0;
+    Object.entries(cityCounts).forEach(([city, count]) => {
+        if (count > maxCityCount) {
+            maxCityCount = count;
+            favCity = city;
+        }
+    });
 
-    // 构建文案
-    const bevString = itemsText.map(i => `${i.count} 杯 ${i.name.split('·')[1] || i.name}`).join(' + ');
-    
+    // 找出最忙碌的一天
+    let busyDay = "周末";
+    let maxDayCount = 0;
+    Object.entries(dayCounts).forEach(([day, count]) => {
+        if (count > maxDayCount) {
+            maxDayCount = count;
+            busyDay = day;
+        }
+    });
+
     return {
-        timeframeLabel, // "每天" / "每周" / "每月"
-        costDisplay: baseAmount.toFixed(0), // 金额
-        description: `这笔开销相当于${timeframeLabel}少喝了 ${bevString}。`, // 描述文案
-        energyText: `总计减少摄入 ${totalSavedKcal} kcal 热量`, // 热量文案
-        runDistance: runDistance // 距离
+        busyDay,
+        favCity,
+        totalCities: Object.keys(cityCounts).length
     };
   };
 
-  // === 核心逻辑：生成时间统计 (读书/看电影) ===
+  // === 辅助逻辑：生成生活统计 ===
+  const generateLifestyleStats = (totalMoney) => {
+    const daily = totalMoney / 365;
+    const weekly = totalMoney / 52;
+    const monthly = totalMoney / 12;
+
+    const minBev = BEVERAGES.reduce((prev, curr) => prev.price < curr.price ? prev : curr);
+    let targetBev = BEVERAGES[Math.floor(Math.random() * BEVERAGES.length)];
+    
+    let primaryType = ''; 
+    let primaryBev = targetBev;
+
+    if (daily >= targetBev.price) {
+      primaryType = 'daily';
+    } else if (weekly >= targetBev.price) {
+      primaryType = 'weekly';
+    } else if (monthly >= targetBev.price) {
+      primaryType = 'monthly';
+    } else {
+      primaryType = 'monthly';
+      primaryBev = minBev;
+    }
+
+    const labelMap = { daily: '每天', weekly: '每周', monthly: '每月' };
+    // 增加英文映射
+    const labelMapEn = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
+    
+    const currentBaseAmount = { daily, weekly, monthly }[primaryType];
+    const primaryCount = (currentBaseAmount / primaryBev.price).toFixed(1);
+    const primaryKcal = Math.floor(primaryCount * primaryBev.kcal);
+    
+    let monthlyInfo = null;
+    if (monthly >= primaryBev.price) {
+      const mCount = (monthly / primaryBev.price).toFixed(1);
+      const mKcal = Math.floor(mCount * primaryBev.kcal);
+      monthlyInfo = { count: mCount, kcal: mKcal, label: '每月' };
+    }
+
+    // --- 修改点：保留全名 ---
+    const bevName = primaryBev.name; 
+    let description = `${labelMap[primaryType]}少喝 ${primaryCount} 杯 ${bevName}`;
+    
+    if (primaryType !== 'monthly' && monthlyInfo) {
+      description += `，折合${monthlyInfo.label}约 ${monthlyInfo.count} 杯`;
+    }
+
+    const runDistance = (primaryKcal / 65).toFixed(1);
+
+    return {
+      timeframeLabel: labelMap[primaryType],
+      timeframeLabelEn: labelMapEn[primaryType], // 传出英文标签
+      costDisplay: currentBaseAmount.toFixed(0),
+      description: `这笔开销相当于${description}。`,
+      energyText: `${labelMap[primaryType]}减少摄入 ${primaryKcal} kcal`,
+      kcalValue: primaryKcal,
+      runDistance: runDistance,
+    };
+  };
+
+  // === 辅助逻辑：生成时间统计 ===
   const generateTimeStats = (playCount) => {
-      const totalMinutes = playCount * 150; // 假设每部剧 2.5 小时 = 150分钟
-      
-      // 随机选一个参照物
+      const totalMinutes = playCount * 150; 
       const activity = TIME_ACTIVITIES[Math.floor(Math.random() * TIME_ACTIVITIES.length)];
       const count = (totalMinutes / activity.minutes).toFixed(1);
 
@@ -155,6 +222,7 @@ export default function StatsBoard({ plays }) {
       };
   };
 
+  // === 主逻辑：处理报告生成 ===
   const handleGenerateReport = async () => {
     if (plays.length < 3) {
       alert("记录太少啦，多看几部戏再来生成报告吧！");
@@ -165,11 +233,19 @@ export default function StatsBoard({ plays }) {
     setNotification(null);
 
     try {
-      // 1. 本地数学计算
+      // -----------------------------------------------------
+      // 1. 前端执行非 AI 计算 (原后端逻辑迁移至此)
+      // -----------------------------------------------------
+      
+      // A. 计算足迹与习惯
+      const accurateCityVisits = getCityVisits(plays);
+      const habits = calculateHabits(plays);
+
+      // B. 计算经济与时间统计
       const lifeStats = generateLifestyleStats(totalSpent);
       const timeStats = generateTimeStats(plays.length);
       
-      // 寻找最贵月份
+      // C. 计算消费峰值月份
       const monthMap = {};
       plays.forEach(r => {
           const m = new Date(r.date).getMonth() + 1 + "月";
@@ -178,19 +254,19 @@ export default function StatsBoard({ plays }) {
       let maxMon = '', maxVal = 0;
       Object.entries(monthMap).forEach(([m, v]) => { if(v > maxVal) { maxVal = v; maxMon = m; } });
 
-      const mathStats = {
-          life: lifeStats, // 包含奶茶、热量、跑步距离
-          time: timeStats, // 包含总时长、活动换算
+      const extraStats = {
+          life: lifeStats, 
+          time: timeStats, 
           money: {
               totalCost: totalSpent,
               maxMonth: maxMon,
               maxMonthCost: maxVal
-          },
-          favCity: Object.entries(plays.reduce((acc, p) => { acc[p.city] = (acc[p.city]||0)+1; return acc; }, {}))
-                    .sort((a,b) => b[1]-a[1])[0]?.[0] || '未知'
+          }
       };
 
-      // 2. 调用 AI
+      // -----------------------------------------------------
+      // 2. 调用后端 AI (仅负责生成文本)
+      // -----------------------------------------------------
       const { data, error } = await supabase.functions.invoke('analyze-program', {
         body: { 
           action: 'generate_report', 
@@ -203,10 +279,14 @@ export default function StatsBoard({ plays }) {
       
       const aiResult = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
       
-      // 3. 合并
+      // -----------------------------------------------------
+      // 3. 数据合并 (前端完成组装)
+      // -----------------------------------------------------
       const finalReport = {
-          ...aiResult,
-          extraStats: mathStats
+          ...aiResult,         // AI 生成的感性分析 (letter, keywords, etc.)
+          cityVisits: accurateCityVisits, // [关键] 准确的地图路径
+          habits: habits,      // [关键] 准确的统计 (Top City, Busy Day)
+          extraStats: extraStats 
       };
       
       setReportData(finalReport);
@@ -216,7 +296,6 @@ export default function StatsBoard({ plays }) {
     } catch (err) {
       console.error("Report error:", err);
       alert("生成失败，请稍后再试");
-      if (reportData) setNotification('success');
     } finally {
       setIsGenerating(false);
     }
