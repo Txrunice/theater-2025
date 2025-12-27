@@ -35,7 +35,7 @@ const SmartInput = ({ label, value, onChange, suggestions = [], icon: Icon }) =>
   );
 };
 
-export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = [] }) {
+export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = [], userId}) {
   const fileInputRef = useRef(null);
   const programInputRef = useRef(null); 
   
@@ -261,7 +261,8 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
         ...formData,
         title: cleanTitle,
         cast_list: cleanCast,
-        rating: (Object.values(formData.ratings_detail).reduce((a, b) => a + b, 0) / 4).toFixed(1)
+        rating: (Object.values(formData.ratings_detail).reduce((a, b) => a + b, 0) / 4).toFixed(1),
+        user_id: userId
       };
       delete dataToSave.id; delete dataToSave.created_at;
 
@@ -274,7 +275,10 @@ export default function EditorModal({ isOpen, onClose, play, onSave, allPlays = 
 
       const uniqueActors = [...new Set(cleanCast.map(c => c.name?.trim()).filter(Boolean))];
       if (uniqueActors.length > 0) {
-        await supabase.from('actors').upsert(uniqueActors.map(name => ({ name })), { onConflict: 'name', ignoreDuplicates: true });
+        await supabase.from('actors').upsert(
+            uniqueActors.map(name => ({ name, user_id: userId })), 
+            { onConflict: 'name, user_id', ignoreDuplicates: true }
+        );
       }
 
       onSave(); 

@@ -44,7 +44,7 @@ serve(async (req: Request) => {
       4. **theme_analysis (剧目主题回顾)**: 聚焦于剧目本身。总结今年看的戏主要集中在什么主题。
       5. **picks (精选)**:
          - **top**: 年度最佳。请结合用户的【评分】(rating)和【内容】进行分析。为什么给高分？
-      6. **keywords**:  - 10个年度关键词。
+      6. **keywords**:  - 8个年度关键词。
       7. **userLabel (年度称号)**: 请根据用户的偏好创造一个有文学感的称号。
       8. **letter**: 一封温暖的信，字数500字左右。
        【重要约束】：
@@ -67,7 +67,7 @@ serve(async (req: Request) => {
             "top": { "title": "String", "reason": "String" }
         },
         "stats": {
-            "keywords": ["String"]
+            "keywords": ["String", "String", "String", "String", "String", "String", "String", "String"]
         },
         "userLabel": "String",
         "letter": "String"

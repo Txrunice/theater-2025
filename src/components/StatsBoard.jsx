@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Ticket, Coins, MapPin, Trophy, Sparkles, Loader2, FileText, Mail, RotateCw } from 'lucide-react';
-import { supabase } from '../supabase';
+import { supabase, saveUserReport, fetchUserReport } from '../supabase'; // 👈 1. 引入新函数
 import AnnualReport from './AnnualReport';
 
-// === 饮品数据库 ===
+// === 饮品数据库 (保持不变) ===
 const BEVERAGES = [
   { name: "星巴克·焦糖玛奇朵", price: 37, kcal: 250 },
   { name: "一点点·冰淇淋红茶", price: 15, kcal: 210 },
@@ -17,7 +17,7 @@ const BEVERAGES = [
   { name: "茶百道·豆乳玉麒麟", price: 14, kcal: 300 }
 ];
 
-// === 时间转化库 ===
+// === 时间转化库 (保持不变) ===
 const TIME_ACTIVITIES = [
   { name: "读完《百年孤独》", minutes: 900 },
   { name: "刷完一部经典电影", minutes: 120 },
@@ -53,19 +53,37 @@ const StatCard = ({ label, value, unit, icon: Icon, delay }) => (
   </motion.div>
 );
 
-export default function StatsBoard({ plays }) {
+// 👇 2. 接收 userId 参数
+export default function StatsBoard({ plays, userId }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   
-  const [reportData, setReportData] = useState(() => {
-    const saved = localStorage.getItem('theater_2025_report');
-    return saved ? JSON.parse(saved) : null;
-  });
+  // 3. 修改初始状态：不再直接读 localStorage，而是默认为 null
+  const [reportData, setReportData] = useState(null);
+  
+  // 4. 新增：加载组件时，根据 userId 去数据库拉取报告
+  useEffect(() => {
+    async function loadReport() {
+        if (!userId) return;
+        setReportData(null); // 切换用户时先清空，防止闪烁旧数据
+        
+        try {
+            const data = await fetchUserReport(userId);
+            if (data) {
+                setReportData(data);
+                setNotification('success');
+            }
+        } catch (error) {
+            console.error("加载报告失败", error);
+        }
+    }
+    loadReport();
+  }, [userId]); // 当 userId 变化时重新执行
 
   const hasReport = !!reportData; 
-  const [notification, setNotification] = useState(hasReport ? 'success' : null);
+  const [notification, setNotification] = useState(null);
 
-  // 基础数据统计 (用于上方卡片)
+  // 基础数据统计
   const totalSpent = plays.reduce((acc, curr) => acc + Number(curr.price || 0), 0);
   const cities = [...new Set(plays.map(p => p.city))];
   const cityCount = cities.length;
@@ -75,47 +93,30 @@ export default function StatsBoard({ plays }) {
   });
   const topCategory = Object.keys(categoryCount).reduce((a, b) => categoryCount[a] > categoryCount[b] ? a : b, '暂无');
 
-  // ==========================================
-  // 1. 工具函数：计算准确的城市足迹
-  // ==========================================
+  // 工具函数：计算准确的城市足迹 (保持不变)
   const getCityVisits = (records) => {
-    const sorted = [...records].sort((a, b) => 
-        new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-
+    const sorted = [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const visits = [];
-    
     sorted.forEach(record => {
         if (!record.city) return;
-        // 核心逻辑：只有当这是第一条记录，或者当前城市与上一条记录的城市不同时才添加
-        // 这解决了连续多天在同一城市看剧导致地图路径点密集重叠的问题
         if (visits.length === 0 || visits[visits.length - 1].city !== record.city) {
-            visits.push({
-                city: record.city,
-                date: record.date
-            });
+            visits.push({ city: record.city, date: record.date });
         }
     });
     return visits;
   };
 
-  // ==========================================
-  // 2. 工具函数：计算习惯 (Top City & Busy Day) 
-  // ==========================================
+  // 工具函数：计算习惯 (保持不变)
   const calculateHabits = (records) => {
     const cityCounts = {};
     const dayCounts = {};
-    // 保持与后端一致的中文数组，如果你希望显示英文，可改为 ['Sunday', 'Monday', ...]
     const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
     records.forEach(r => {
-        // 1. 统计城市频率
         if (r.city) {
-            const city = r.city.replace('市', ''); // 统一去掉“市”
+            const city = r.city.replace('市', '');
             cityCounts[city] = (cityCounts[city] || 0) + 1;
         }
-        
-        // 2. 统计星期频率
         const date = new Date(r.date);
         if (!isNaN(date.getTime())) {
             const dayName = days[date.getDay()];
@@ -123,34 +124,22 @@ export default function StatsBoard({ plays }) {
         }
     });
 
-    // 找出最常去的城市
     let favCity = "未知";
     let maxCityCount = 0;
     Object.entries(cityCounts).forEach(([city, count]) => {
-        if (count > maxCityCount) {
-            maxCityCount = count;
-            favCity = city;
-        }
+        if (count > maxCityCount) { maxCityCount = count; favCity = city; }
     });
 
-    // 找出最忙碌的一天
     let busyDay = "周末";
     let maxDayCount = 0;
     Object.entries(dayCounts).forEach(([day, count]) => {
-        if (count > maxDayCount) {
-            maxDayCount = count;
-            busyDay = day;
-        }
+        if (count > maxDayCount) { maxDayCount = count; busyDay = day; }
     });
 
-    return {
-        busyDay,
-        favCity,
-        totalCities: Object.keys(cityCounts).length
-    };
+    return { busyDay, favCity, totalCities: Object.keys(cityCounts).length };
   };
 
-  // === 辅助逻辑：生成生活统计 ===
+  // 辅助逻辑：生成生活统计 (保持不变)
   const generateLifestyleStats = (totalMoney) => {
     const daily = totalMoney / 365;
     const weekly = totalMoney / 52;
@@ -162,19 +151,12 @@ export default function StatsBoard({ plays }) {
     let primaryType = ''; 
     let primaryBev = targetBev;
 
-    if (daily >= targetBev.price) {
-      primaryType = 'daily';
-    } else if (weekly >= targetBev.price) {
-      primaryType = 'weekly';
-    } else if (monthly >= targetBev.price) {
-      primaryType = 'monthly';
-    } else {
-      primaryType = 'monthly';
-      primaryBev = minBev;
-    }
+    if (daily >= targetBev.price) { primaryType = 'daily'; } 
+    else if (weekly >= targetBev.price) { primaryType = 'weekly'; } 
+    else if (monthly >= targetBev.price) { primaryType = 'monthly'; } 
+    else { primaryType = 'monthly'; primaryBev = minBev; }
 
     const labelMap = { daily: '每天', weekly: '每周', monthly: '每月' };
-    // 增加英文映射
     const labelMapEn = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' };
     
     const currentBaseAmount = { daily, weekly, monthly }[primaryType];
@@ -188,10 +170,8 @@ export default function StatsBoard({ plays }) {
       monthlyInfo = { count: mCount, kcal: mKcal, label: '每月' };
     }
 
-    // --- 修改点：保留全名 ---
     const bevName = primaryBev.name; 
     let description = `${labelMap[primaryType]}少喝 ${primaryCount} 杯 ${bevName}`;
-    
     if (primaryType !== 'monthly' && monthlyInfo) {
       description += `，折合${monthlyInfo.label}约 ${monthlyInfo.count} 杯`;
     }
@@ -200,7 +180,7 @@ export default function StatsBoard({ plays }) {
 
     return {
       timeframeLabel: labelMap[primaryType],
-      timeframeLabelEn: labelMapEn[primaryType], // 传出英文标签
+      timeframeLabelEn: labelMapEn[primaryType],
       costDisplay: currentBaseAmount.toFixed(0),
       description: `这笔开销相当于${description}。`,
       energyText: `${labelMap[primaryType]}减少摄入 ${primaryKcal} kcal`,
@@ -209,17 +189,12 @@ export default function StatsBoard({ plays }) {
     };
   };
 
-  // === 辅助逻辑：生成时间统计 ===
+  // 辅助逻辑：生成时间统计 (保持不变)
   const generateTimeStats = (playCount) => {
       const totalMinutes = playCount * 150; 
       const activity = TIME_ACTIVITIES[Math.floor(Math.random() * TIME_ACTIVITIES.length)];
       const count = (totalMinutes / activity.minutes).toFixed(1);
-
-      return {
-          totalHours: (totalMinutes / 60).toFixed(1),
-          activityName: activity.name,
-          activityCount: count
-      };
+      return { totalHours: (totalMinutes / 60).toFixed(1), activityName: activity.name, activityCount: count };
   };
 
   // === 主逻辑：处理报告生成 ===
@@ -233,19 +208,12 @@ export default function StatsBoard({ plays }) {
     setNotification(null);
 
     try {
-      // -----------------------------------------------------
-      // 1. 前端执行非 AI 计算 (原后端逻辑迁移至此)
-      // -----------------------------------------------------
-      
-      // A. 计算足迹与习惯
+      // 1. 前端计算
       const accurateCityVisits = getCityVisits(plays);
       const habits = calculateHabits(plays);
-
-      // B. 计算经济与时间统计
       const lifeStats = generateLifestyleStats(totalSpent);
       const timeStats = generateTimeStats(plays.length);
       
-      // C. 计算消费峰值月份
       const monthMap = {};
       plays.forEach(r => {
           const m = new Date(r.date).getMonth() + 1 + "月";
@@ -257,40 +225,31 @@ export default function StatsBoard({ plays }) {
       const extraStats = {
           life: lifeStats, 
           time: timeStats, 
-          money: {
-              totalCost: totalSpent,
-              maxMonth: maxMon,
-              maxMonthCost: maxVal
-          }
+          money: { totalCost: totalSpent, maxMonth: maxMon, maxMonthCost: maxVal }
       };
 
-      // -----------------------------------------------------
-      // 2. 调用后端 AI (仅负责生成文本)
-      // -----------------------------------------------------
+      // 2. 调用后端 AI
       const { data, error } = await supabase.functions.invoke('analyze-program', {
-        body: { 
-          action: 'generate_report', 
-          records: plays,
-          year: new Date().getFullYear() 
-        }
+        body: { action: 'generate_report', records: plays, year: new Date().getFullYear() }
       });
 
       if (error) throw error;
       
       const aiResult = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
       
-      // -----------------------------------------------------
-      // 3. 数据合并 (前端完成组装)
-      // -----------------------------------------------------
+      // 3. 数据合并
       const finalReport = {
-          ...aiResult,         // AI 生成的感性分析 (letter, keywords, etc.)
-          cityVisits: accurateCityVisits, // [关键] 准确的地图路径
-          habits: habits,      // [关键] 准确的统计 (Top City, Busy Day)
+          ...aiResult,
+          cityVisits: accurateCityVisits,
+          habits: habits,
           extraStats: extraStats 
       };
       
+      // 4. 保存到数据库 (替换掉原来的 localStorage 逻辑)
+      console.log("Saving report for user:", userId);
+      await saveUserReport(userId, finalReport);
+
       setReportData(finalReport);
-      localStorage.setItem('theater_2025_report', JSON.stringify(finalReport));
       setNotification('success'); 
 
     } catch (err) {

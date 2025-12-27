@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, LayoutGrid, Ticket, Search, Loader2, Map as MapIcon, CalendarRange, List, Sparkles, Users, Home } from 'lucide-react';
+import { Plus, LayoutGrid, Ticket, Search, Loader2, Map as MapIcon, CalendarRange, List, Sparkles, Users, LogOut } from 'lucide-react'; // 引入了 LogOut
 import { supabase } from './supabase';
 
 import StatsBoard from './components/StatsBoard';
@@ -10,8 +10,9 @@ import EditorModal from './components/EditorModal';
 import MapDashboard from './components/MapDashboard';
 import TimelineView from './components/TimelineView';
 import ActorView from './components/ActorView';
+import Auth from './components/Auth'; // 引入 Auth 组件
 
-// === 子组件：首页巨大的装饰头图 ===
+// === BigHeader 组件 (保持不变) ===
 const BigHeader = () => (
   <motion.header 
     initial={{ opacity: 0, scale: 0.95 }}
@@ -20,36 +21,26 @@ const BigHeader = () => (
     transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
     className="relative min-h-[50vh] w-full flex flex-col justify-center items-center overflow-hidden"
   >
-    {/* 背景装饰：浑天仪 */}
     <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none overflow-hidden">
        <div className="absolute w-[800px] h-[800px] border border-dashed border-white/20 rounded-full animate-[spin_60s_linear_infinite]" />
        <div className="absolute w-[600px] h-[600px] border border-white/10 rounded-full animate-[spin_40s_linear_infinite_reverse]" />
        <div className="absolute w-[400px] h-[400px] bg-gradient-radial from-cinnabar/10 via-transparent to-transparent blur-3xl" />
     </div>
-
-    {/* 顶部流光 */}
     <div className="absolute top-[-50%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-gradient-radial from-cinnabar/20 to-transparent blur-[120px] pointer-events-none" />
-
     <div className="relative z-10 text-center px-4 w-full max-w-4xl mt-10">
       <div className="flex items-center justify-center gap-4 mb-6 opacity-60">
         <Sparkles size={12} className="text-gold" />
-        <span className="text-[10px] md:text-xs font-mono text-gold tracking-[0.6em] uppercase">
-          Digital Collection
-        </span>
+        <span className="text-[10px] md:text-xs font-mono text-gold tracking-[0.6em] uppercase">Digital Collection</span>
         <Sparkles size={12} className="text-gold" />
       </div>
-
       <h1 className="text-9xl md:text-[10rem] font-serif font-black text-white mb-4 drop-shadow-2xl tracking-tighter leading-none relative inline-block">
         <span className="relative z-10 mix-blend-overlay opacity-50">20</span>
         <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-b from-cinnabar-glow to-cinnabar">25</span>
         <span className="absolute top-1 left-1 text-cinnabar/20 blur-sm -z-10 select-none">2025</span>
       </h1>
-
       <div className="flex flex-col items-center mt-2">
         <div className="h-[1px] w-24 bg-gradient-to-r from-transparent via-white/30 to-transparent mb-4"></div>
-        <p className="text-paper-200/80 font-serif text-sm md:text-base tracking-[0.4em] uppercase font-bold text-shadow-sm">
-          "All the world's a stage"
-        </p>
+        <p className="text-paper-200/80 font-serif text-sm md:text-base tracking-[0.4em] uppercase font-bold text-shadow-sm">"All the world's a stage"</p>
       </div>
     </div>
   </motion.header>
@@ -57,32 +48,57 @@ const BigHeader = () => (
 
 // === 主组件 ===
 export default function App() {
+  const [session, setSession] = useState(null); // 添加 session 状态
   const [plays, setPlays] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // 核心状态：'home' 代表首页，其他代表具体功能页
   const [activeTab, setActiveTab] = useState('home'); 
   const [galleryMode, setGalleryMode] = useState('grid');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEditing, setCurrentEditing] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => { fetchPlays(); }, []);
+  // 1. 初始化鉴权监听
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchPlays(); // 如果有session直接获取数据
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchPlays();
+      else setPlays([]); // 登出清空数据
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const fetchPlays = async () => {
     setLoading(true);
+    // RLS 会自动处理只获取当前用户的数据
     const { data, error } = await supabase.from('plays').select('*').order('date', { ascending: false });
     if (!error) setPlays(data || []);
     setLoading(false);
   };
 
   const handleSave = () => { setIsModalOpen(false); fetchPlays(); };
+  
   const handleDelete = async (id) => {
     if(window.confirm("确定要删除这条记录吗？")) {
       await supabase.from('plays').delete().eq('id', id);
       setPlays(plays.filter(p => p.id !== id));
     }
   };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  // 如果没有登录，显示 Auth 界面
+  if (!session) {
+    return <Auth />;
+  }
 
   const filteredPlays = plays.filter(play => 
     (play.title || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -95,21 +111,16 @@ export default function App() {
     { id: 'map', label: '足迹', icon: MapIcon },
   ];
 
-  // 判断当前是否在首页模式
   const isHome = activeTab === 'home';
 
   return (
     <div className="min-h-screen pb-20 selection:bg-cinnabar selection:text-white bg-[#0b0c10]">
       
-      {/* 1. 首页大图 (只在 activeTab 为 home 时显示) */}
       <AnimatePresence>
         {isHome && <BigHeader />}
       </AnimatePresence>
 
-      {/* 2. 导航栏 (布局核心) */}
-      {/* 如果是 Home: 相对定位，居中。如果是 Page: 固定定位(Sticky)，顶部，带背景模糊 */}
       <div className={`z-50 transition-all duration-500 ease-in-out flex justify-center w-full ${isHome ? 'relative -mt-8 mb-12' : 'sticky top-4 mb-6'}`}>
-        
         <div className={`
           flex items-center justify-between transition-all duration-500
           ${isHome 
@@ -118,9 +129,7 @@ export default function App() {
           }
           backdrop-blur-xl border rounded-full
         `}>
-           
            <div className="flex items-center gap-4">
-             {/* === 迷你 Logo (只在非首页显示) === */}
              <AnimatePresence>
                {!isHome && (
                  <motion.button
@@ -141,7 +150,6 @@ export default function App() {
                )}
              </AnimatePresence>
 
-             {/* 选项卡按钮 */}
              <div className="flex gap-1">
                {tabs.map((tab) => (
                  <button 
@@ -160,7 +168,6 @@ export default function App() {
                    )}
                    <span className="relative z-10 flex items-center gap-2">
                      <tab.icon size={15} className={activeTab === tab.id ? "text-cinnabar-glow" : ""} />
-                     {/* 在手机端非首页模式下，隐藏文字只留图标，节省空间 */}
                      <span className={`${!isHome ? 'hidden md:inline' : 'inline'}`}>{tab.label}</span>
                    </span>
                  </button>
@@ -168,7 +175,6 @@ export default function App() {
              </div>
            </div>
 
-           {/* 右侧搜索与添加 */}
            <div className="flex items-center gap-2 pr-1">
               {(activeTab === 'gallery' || isHome) && (
                  <div className={`hidden md:flex items-center bg-black/30 rounded-full px-3 py-2 border border-white/5 focus-within:border-cinnabar/50 transition-colors mr-1 ${isHome ? '' : 'w-40'}`}>
@@ -187,6 +193,15 @@ export default function App() {
               >
                 <Plus size={18} />
               </button>
+              
+              {/* 退出登录按钮 */}
+              <button 
+                onClick={handleLogout}
+                className="ml-2 text-zinc-500 hover:text-white transition-colors"
+                title="退出登录"
+              >
+                <LogOut size={18} />
+              </button>
            </div>
         </div>
       </div>
@@ -199,22 +214,20 @@ export default function App() {
           </div>
         ) : (
           <AnimatePresence mode='wait'>
-            
-            {/* === 0. 首页: 仅显示统计数据 === */}
             {isHome && (
               <motion.div key="home" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}>
-                 <StatsBoard plays={plays} />
-                 {/* 首页底部的提示信息 */}
+                 <StatsBoard 
+                  plays={plays}
+                  userId={session?.user?.id}
+                 />
                  <div className="mt-20 text-center opacity-30">
                     <p className="text-[10px] font-mono tracking-[0.5em] text-white">SELECT A TAB TO START</p>
                  </div>
               </motion.div>
             )}
 
-            {/* === 1. 剧目列表视图 === */}
             {activeTab === 'gallery' && (
               <motion.div key="gallery" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                 
                  <div className="flex justify-between items-end mb-8 px-2 max-w-7xl mx-auto border-b border-white/5 pb-4 mt-4">
                     <div className="flex items-baseline gap-4">
                       <h2 className="text-3xl font-serif text-white/90">剧目存档</h2>
@@ -245,24 +258,29 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* === 2. 演员视图 === */}
             {activeTab === 'actors' && (
               <motion.div key="actors" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <ActorView plays={plays} />
               </motion.div>
             )}
 
-            {/* === 3. 时间轴视图 === */}
             {activeTab === 'timeline' && <motion.div key="timeline" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><TimelineView plays={plays} /></motion.div>}
             
-            {/* === 4. 地图视图 === */}
             {activeTab === 'map' && <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><MapDashboard plays={plays} /></motion.div>}
 
           </AnimatePresence>
         )}
       </main>
 
-      <EditorModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} play={currentEditing} onSave={handleSave} allPlays={plays} />
+      {/* 将当前用户 ID 传给 Modal */}
+      <EditorModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        play={currentEditing} 
+        onSave={handleSave} 
+        allPlays={plays} 
+        userId={session.user.id} 
+      />
     </div>
   );
 }
