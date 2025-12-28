@@ -11,6 +11,10 @@ import MapDashboard from './components/MapDashboard';
 import TimelineView from './components/TimelineView';
 import ActorView from './components/ActorView';
 import Auth from './components/Auth'; // 引入 Auth 组件
+import WelcomeCurtain from './components/WelcomeCurtain'; 
+
+import AdminDashboard from './components/AdminDashboard'; // 1. 引入后台组件
+const ADMIN_EMAIL = "txrun2004@163.com"; // 2. ⚠️ 这里改成你的管理员邮箱
 
 // === BigHeader 组件 (保持不变) ===
 const BigHeader = () => (
@@ -57,6 +61,10 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEditing, setCurrentEditing] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewAsAdmin, setViewAsAdmin] = useState(true); // 3. 默认优先看后台
+
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [welcomeName, setWelcomeName] = useState('');
 
   // 1. 初始化鉴权监听
   useEffect(() => {
@@ -66,6 +74,20 @@ export default function App() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+
+      // 👇👇👇 这里的逻辑必须和 Auth.jsx 里的 key 保持一致 ('SHOW_WELCOME') 👇👇👇
+      if (_event === 'SIGNED_IN' && session) {
+        // 检查口袋里有没有刚才 Auth.jsx 塞进去的票
+        if (sessionStorage.getItem('SHOW_WELCOME') === 'true') {
+          const name = session.user?.user_metadata?.display_name || '观众';
+          setWelcomeName(name);
+          setShowWelcome(true);
+          
+          // ⚠️ 检票进场后，立刻销毁票据，防止刷新重复显示
+          sessionStorage.removeItem('SHOW_WELCOME'); 
+        }
+      }
+      
       setSession(session);
       if (session) fetchPlays();
       else setPlays([]); // 登出清空数据
@@ -100,6 +122,26 @@ export default function App() {
     return <Auth />;
   }
 
+  // === 4. 插入管理员逻辑 ===
+  const isUserAdmin = session.user.email === ADMIN_EMAIL;
+
+  // 如果是管理员，并且处于后台模式，直接显示后台
+  if (isUserAdmin && viewAsAdmin) {
+    return (
+      <>
+        <AdminDashboard session={session} onLogout={handleLogout} />
+        {/* 悬浮按钮：让管理员能切换去前台看看 */}
+        <button 
+          onClick={() => setViewAsAdmin(false)}
+          className="fixed bottom-6 right-6 z-[100] bg-cinnabar text-white px-4 py-2 rounded-full shadow-lg font-bold text-xs hover:scale-105 transition-transform"
+        >
+          预览前台视图
+        </button>
+      </>
+    );
+  }
+  // ========================================
+
   const filteredPlays = plays.filter(play => 
     (play.title || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -115,6 +157,26 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-20 selection:bg-cinnabar selection:text-white bg-[#0b0c10]">
+      {/* 4. 欢迎幕布动画 */}
+      <AnimatePresence>
+        {showWelcome && (
+          <WelcomeCurtain 
+            displayName={welcomeName} 
+            onAnimationComplete={() => setShowWelcome(false)} 
+          />
+        )}
+      </AnimatePresence>
+
+
+      {/* 5. 前台界面的悬浮按钮：切回后台 */}
+      {isUserAdmin && (
+        <button 
+            onClick={() => setViewAsAdmin(true)}
+            className="fixed top-4 right-20 z-[60] bg-zinc-800/80 backdrop-blur text-zinc-300 border border-zinc-600 px-3 py-1.5 rounded text-xs font-mono hover:bg-zinc-700 transition-colors"
+        >
+            ADMIN CONSOLE
+        </button>
+      )}
       
       <AnimatePresence>
         {isHome && <BigHeader />}
