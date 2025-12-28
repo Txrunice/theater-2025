@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 // 引入你目录结构中的坐标文件
 import { CHINA_CITIES_COORDINATES } from '../constants/cityCoordinates'; 
-import { X, ChevronRight, ChevronLeft, Quote, Sparkles, MapPin, Calendar, Trophy, Clock, Repeat, Flame, Coffee, Activity, ArrowRight } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Quote, Sparkles, MapPin, Calendar, Trophy, Clock, Repeat, Flame, Coffee, Activity, ArrowRight, AlertTriangle, RefreshCcw } from 'lucide-react';
 import mapData from '../assets/china.json'
 
 // ==========================================
@@ -322,7 +322,6 @@ const SlideTimeline = ({ data }) => (
 );
 
 // === Slide 3: 时空 (SpaceTime) ===
-// === 优化后的 Slide 3: 时空 (SpaceTime) ===
 const SlideSpaceTime = ({ data }) => {
     const { habits, cityVisits, monthly_story } = data;
 
@@ -635,27 +634,96 @@ const SlideFinal = ({ data, onRegenerate }) => (
         </motion.button>
     </div>
 );
+// ==========================================
+
+// 3. 错误视图组件
+// === 在这里插入 ErrorView 组件 ===
+const ErrorView = ({ onRegenerate, onClose }) => (
+  <motion.div
+    initial={{ scale: 0.95, opacity: 0, y: 20 }}
+    animate={{ scale: 1, opacity: 1, y: 0 }}
+    exit={{ scale: 0.9, opacity: 0 }}
+    transition={{ duration: 0.4, ease: "easeOut" }}
+    className="relative w-full max-w-md p-10 mx-4 bg-[#0f0f0f] border border-white/10 rounded-xl shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)] text-center overflow-hidden z-50 group"
+  >
+    {/* 氛围背景装饰 */}
+    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-gradient-to-r from-transparent via-red-900/50 to-transparent" />
+    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20" />
+    <div className="absolute -top-24 -right-24 w-48 h-48 bg-cinnabar/10 rounded-full blur-[80px] pointer-events-none" />
+
+    {/* 动态图标 */}
+    <div className="relative mx-auto w-24 h-24 mb-8">
+        <div className="absolute inset-0 border border-red-500/20 rounded-full animate-[spin_10s_linear_infinite]" />
+        <div className="absolute inset-2 border border-dashed border-red-500/30 rounded-full animate-[spin_15s_linear_infinite_reverse]" />
+        <div className="absolute inset-0 flex items-center justify-center text-red-500/80 drop-shadow-[0_0_10px_rgba(220,38,38,0.5)]">
+            <AlertTriangle size={36} strokeWidth={1.5} />
+        </div>
+    </div>
+
+    {/* 文案 */}
+    <h2 className="text-2xl font-serif font-bold text-white mb-4 tracking-wider">
+      演出暂时中断
+    </h2>
+    
+    <div className="space-y-4 mb-10">
+        <p className="text-gray-400 text-sm leading-loose font-serif">
+          我们的 AI 编剧在梳理您精彩的年度剧目时，<br/>
+          陷入了深深的思考，笔触暂时停滞了。
+        </p>
+        <p className="text-gray-500 text-xs tracking-widest uppercase opacity-60">
+          SCRIPT GENERATION INTERRUPTED
+        </p>
+    </div>
+
+    {/* 按钮组 */}
+    <div className="flex flex-col gap-4 relative z-10">
+      <button 
+        onClick={() => {
+            onClose(); 
+            setTimeout(onRegenerate, 300); 
+        }}
+        className="w-full py-3.5 bg-gradient-to-r from-red-900 to-red-800 hover:from-red-800 hover:to-red-700 text-white/90 rounded-lg font-bold flex items-center justify-center gap-3 transition-all shadow-lg border border-white/5 hover:border-red-500/30 hover:shadow-red-900/20 hover:scale-[1.02]"
+      >
+        <RefreshCcw size={16} />
+        <span>重新拉开帷幕</span>
+      </button>
+
+      <button 
+        onClick={onClose}
+        className="text-gray-500 hover:text-gray-300 text-xs transition-colors py-2"
+      >
+        先休息片刻，稍后再试
+      </button>
+    </div>
+  </motion.div>
+);
+
 
 // ==========================================
 // 2. 主组件 (包含信封、信件、大屏逻辑)
 // ==========================================
 export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
-   // *** 每次打开时，重置 viewState 和 currentSlide ***
-  // 这里利用 isOpen 的变化来重置状态
-  const [viewState, setViewState] = useState(isOpen ? 'envelope' : null);
-  const [currentSlide, setCurrentSlide] = useState(isOpen ? 0 : null);
+  // 状态管理
+  const [viewState, setViewState] = useState(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
 
-  // 当 props.isOpen 变化时，如果变为 true，则重置状态
+  // === 核心逻辑修改：根据数据状态决定路由 ===
   React.useEffect(() => {
-    if (isOpen) {
-      setViewState('envelope');
-      setCurrentSlide(0);
+    if (isOpen && data) {
+      if (data.isError) {
+        // 🔥 如果是错误数据，直接进入错误页，跳过信封
+        setViewState('error');
+      } else {
+        // ✅ 如果是正常数据，进入信封流程
+        setViewState('envelope');
+        setCurrentSlide(0);
+      }
     } else {
-      // 组件关闭时，清空状态，避免下次打开时仍有残留
+      // 关闭时重置
       setViewState(null);
-      setCurrentSlide(null);
+      setCurrentSlide(0);
     }
-  }, [isOpen]);
+  }, [isOpen, data]);
 
   const slides = [
       { id: 'overview', component: SlideOverview },
@@ -672,16 +740,22 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
   return (
     <motion.div 
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-0 overflow-hidden"
+        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-0 overflow-hidden"
     >
+        {/* 关闭按钮 */}
         <button onClick={onClose} className="absolute top-6 right-6 text-white/30 hover:text-white z-50 p-2 transition-colors">
             <X size={32} />
         </button>
 
         <AnimatePresence mode="wait">
             
-            {/* 1. 信封阶段 - 豪华升级版 */}
-            {viewState === 'envelope' && (
+            {/* === 新增：场景 0 - 错误提示页 === */}
+            {viewState === 'error' && (
+                <ErrorView key="error" onRegenerate={onRegenerate} onClose={onClose} />
+            )}
+            
+            {/* === 场景 1：信封阶段 (仅在无错误时显示) === */}
+            {viewState === 'envelope' && !data.isError && (
                 <motion.div 
                     key="envelope"
                     initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0, scale: 1.5, filter: "blur(10px)" }}
@@ -704,7 +778,7 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                                 </div>
                             </div>
                             
-                            {/* 蜡封 (核心交互点) */}
+                            {/* 蜡封 */}
                             <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-cinnabar to-red-900 rounded-full shadow-lg flex items-center justify-center border-4 border-[#e8dcc5] relative z-20 group-hover:scale-110 transition-transform duration-300">
                                 <div className="absolute inset-0 rounded-full border border-white/20" />
                                 <Sparkles className="text-gold animate-pulse" size={40} />
@@ -718,15 +792,14 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                 </motion.div>
             )}
 
-            {/* 2. 信件阶段 - 宽版设计 */}
-            {viewState === 'letter' && (
+            {/* === 场景 2：信件阶段 === */}
+            {viewState === 'letter' && !data.isError && (
                 <motion.div 
                     key="letter"
                     initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ x: -100, opacity: 0, transition: { duration: 0.5 } }}
                     className="relative w-full max-w-2xl md:max-w-4xl mx-4"
                 >
                     <div className="bg-[#fcf5e5] text-ink-900 p-10 md:p-16 rounded shadow-2xl relative font-serif overflow-hidden">
-                        {/* 顶部红白蓝纹理条 */}
                         <div className="absolute top-0 left-0 w-full h-4 bg-[repeating-linear-gradient(45deg,#c0392b,#c0392b_10px,#fcf5e5_10px,#fcf5e5_20px,#1a252f_20px,#1a252f_30px,#fcf5e5_30px,#fcf5e5_40px)]" />
                         
                         <div className="mb-8 mt-4 flex justify-between items-end border-b border-ink-900/10 pb-6">
@@ -734,8 +807,6 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                         </div>
                         
                         <div className="prose prose-lg prose-p:text-ink-800 prose-p:leading-loose text-justify max-h-[60vh] overflow-y-auto custom-scrollbar pr-4 mb-10">
-                            {/* 使用 replace 将字面量的 \n 替换为真正的换行符 */}
-                            {/* === 修改开始：将信件切分为段落渲染 === */}
                             <div className="font-serif">
                                 {data.letter && data.letter.replace(/\\n/g, '\n').split(/\n+/).map((para, i) => (
                                     para.trim() && (
@@ -745,29 +816,18 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                                     )
                                 ))}
                             </div>
-
                         </div>
 
-                        {/* 2. 新增：固定落款区域 */}
-                            {/* 2. 新增：艺术落款区域 (签名 + 仿真印章) */}
-                            <div className="mt-12 pt-8 border-t border-ink-900/10 flex justify-end">
-                                <div className="relative pr-4">
-                                    
-                                    {/* A. 名字 (模拟手写书法效果) */}
-                                    <div className="font-serif text-2xl md:text-3xl text-ink-900 font-bold italic tracking-wider transform -rotate-2 z-10 relative" style={{ fontFamily: '"Playfair Display", "Songti SC", "SimSun", serif' }}>
-                                        AI 热情的冰冻生菜
-                                    </div>
-
-                                    {/* B. 日期 (打字机风格，显得严谨) */}
-                                    <div className="font-mono text-xs text-gray-400 tracking-[0.2em] text-right mt-2 uppercase">
-                                        {new Date().toLocaleDateString('en-US', { 
-                                            year: 'numeric', 
-                                            month: 'short', 
-                                            day: 'numeric' 
-                                        }).toUpperCase()}
-                                    </div>
+                        <div className="mt-12 pt-8 border-t border-ink-900/10 flex justify-end">
+                            <div className="relative pr-4">
+                                <div className="font-serif text-2xl md:text-3xl text-ink-900 font-bold italic tracking-wider transform -rotate-2 z-10 relative" style={{ fontFamily: '"Playfair Display", "Songti SC", "SimSun", serif' }}>
+                                    AI 热情的冰冻生菜
+                                </div>
+                                <div className="font-mono text-xs text-gray-400 tracking-[0.2em] text-right mt-2 uppercase">
+                                    {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).toUpperCase()}
                                 </div>
                             </div>
+                        </div>
 
                         <div className="flex justify-between items-center pt-6 border-t border-ink-900/10">
                              <button onClick={onRegenerate} className="flex items-center gap-2 text-sm text-gray-400 hover:text-cinnabar transition-colors group">
@@ -785,17 +845,13 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                 </motion.div>
             )}
 
-            {/* 3. 幻灯片阶段 - 最终豪华大屏 */}
-            {viewState === 'slides' && (
+            {/* === 场景 3：幻灯片阶段 === */}
+            {viewState === 'slides' && !data.isError && (
                 <motion.div 
                     key="slides"
                     initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
                     className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden"
                 >
-                    {/* 卡片容器：
-                        宽度：90vw (移动端), max-w-5xl (桌面端，比之前更宽)
-                        高度：85vh (占据绝大部分屏幕)
-                    */}
                     <div className="w-[92vw] max-w-lg md:max-w-5xl h-[85vh] bg-[#0b0c10] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] relative flex flex-col">
                         
                         {/* 顶部进度条 */}
@@ -834,7 +890,6 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                         </div>
                     </div>
 
-                    {/* 底部导航悬浮 */}
                     <div className="absolute bottom-6 md:bottom-10 flex gap-6 md:gap-12 z-50">
                         <button 
                             disabled={currentSlide === 0}

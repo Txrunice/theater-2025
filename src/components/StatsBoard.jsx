@@ -4,6 +4,47 @@ import { Ticket, Coins, MapPin, Trophy, Sparkles, Loader2, FileText, Mail, Rotat
 import { supabase, saveUserReport, fetchUserReport } from '../supabase'; // 👈 1. 引入新函数
 import AnnualReport from './AnnualReport';
 
+// === 新增：严格的数据结构校验函数 ===
+const validateAiResult = (data) => {
+  // 1. 基础：必须是对象
+  if (!data || typeof data !== 'object') return false;
+
+  // 2. 核心字段：检查 AnnualReport 组件必然会用到的字符串
+  // 对应 prompt 里的 "letter", "summary_text", "userLabel", "monthly_story"
+  if (typeof data.letter !== 'string' || data.letter.length < 10) return false; // 信件太短肯定不对
+  if (typeof data.summary_text !== 'string') return false;
+  if (typeof data.userLabel !== 'string') return false;
+
+  // 3. 数组/集合检查
+  // 对应 prompt 里的 "stats": { "keywords": [...] }
+  // 注意：你的 prompt 把 keywords 放在了 stats 对象里，这里必须层层检查
+  if (!data.stats || !Array.isArray(data.stats.keywords) || data.stats.keywords.length === 0) {
+    console.warn("校验失败：stats.keywords 结构错误或为空");
+    return false;
+  }
+
+  // 4. 复杂对象检查
+  // 对应 prompt 里的 "timeline": { "firstPlay": ..., "lastPlay": ... }
+  if (!data.timeline || !data.timeline.firstPlay || !data.timeline.lastPlay) {
+    console.warn("校验失败：timeline 缺失");
+    return false;
+  }
+
+  // 对应 prompt 里的 "picks": { "top": ... }
+  if (!data.picks || !data.picks.top) {
+    console.warn("校验失败：picks.top 缺失");
+    return false;
+  }
+
+  // 对应 prompt 里的 "theme_analysis"
+  if (!data.theme_analysis) {
+    console.warn("校验失败：theme_analysis 缺失");
+    return false;
+  }
+
+  return true; // 所有检查通过
+};
+
 // === 饮品数据库 (保持不变) ===
 const BEVERAGES = [
   { name: "星巴克·焦糖玛奇朵", price: 37, kcal: 250 },
@@ -60,13 +101,14 @@ export default function StatsBoard({ plays, userId }) {
   
   // 3. 修改初始状态：不再直接读 localStorage，而是默认为 null
   const [reportData, setReportData] = useState(null);
-  
-  // 4. 新增：加载组件时，根据 userId 去数据库拉取报告
+
+  // 🔥 1. 弹窗控制锁：只有用户点击“生成”时才会开启
+  const [shouldAutoOpen, setShouldAutoOpen] = useState(false);
+
+  // 🔥 2. 统一加载逻辑：只在组件挂载或 userId 变化时执行一次
   useEffect(() => {
     async function loadReport() {
         if (!userId) return;
-        setReportData(null); // 切换用户时先清空，防止闪烁旧数据
-        
         try {
             const data = await fetchUserReport(userId);
             if (data) {
@@ -78,7 +120,16 @@ export default function StatsBoard({ plays, userId }) {
         }
     }
     loadReport();
-  }, [userId]); // 当 userId 变化时重新执行
+  }, [userId]);
+
+  // 🔥 3. 自动弹出逻辑：监听数据变化
+  useEffect(() => {
+    // 只有当“锁”开启且“数据报错”时，才自动打开弹窗
+    if (shouldAutoOpen && reportData?.isError) {
+      setShowReportModal(true);
+      setShouldAutoOpen(false); // 弹出后立即关锁，防止二次触发
+    }
+  }, [reportData, shouldAutoOpen]);
 
   const hasReport = !!reportData; 
   const [notification, setNotification] = useState(null);
@@ -198,17 +249,43 @@ export default function StatsBoard({ plays, userId }) {
   };
 
   // === 主逻辑：处理报告生成 ===
+// === 1. 新增：校验逻辑 (根据你的Prompt定制) ===
+  const validateAiResult = (data) => {
+    // 基础检查
+    if (!data || typeof data !== 'object') return false;
+    
+    // 检查 Prompt 中定义的关键字符串字段
+    const requiredStrings = ['letter', 'summary_text', 'userLabel', 'monthly_story'];
+    for (const field of requiredStrings) {
+      if (typeof data[field] !== 'string') return false;
+    }
+
+    // 检查嵌套对象结构 (Timeline, Picks, Theme)
+    if (!data.timeline?.firstPlay || !data.timeline?.lastPlay) return false;
+    if (!data.picks?.top) return false;
+    if (!data.theme_analysis) return false;
+
+    // 检查统计数组 (Keywords)
+    // 你的 prompt 里 keywords 是放在 stats 对象下的
+    if (!data.stats?.keywords || !Array.isArray(data.stats.keywords)) return false;
+
+    return true;
+  };
+
+  // === 2. 修改后的主函数 ===
   const handleGenerateReport = async () => {
     if (plays.length < 3) {
       alert("记录太少啦，多看几部戏再来生成报告吧！");
       return;
     }
-    
+
     setIsGenerating(true);
     setNotification(null);
+    setReportData(null);
+    setShouldAutoOpen(true);
 
     try {
-      // 1. 前端计算
+      // --- A. 前端计算 (这些永远不会错，先算好) ---
       const accurateCityVisits = getCityVisits(plays);
       const habits = calculateHabits(plays);
       const lifeStats = generateLifestyleStats(totalSpent);
@@ -228,33 +305,59 @@ export default function StatsBoard({ plays, userId }) {
           money: { totalCost: totalSpent, maxMonth: maxMon, maxMonthCost: maxVal }
       };
 
-      // 2. 调用后端 AI
-      const { data, error } = await supabase.functions.invoke('analyze-program', {
-        body: { action: 'generate_report', records: plays, year: new Date().getFullYear() }
-      });
+      // --- B. 调用 AI 并进行安全校验 ---
+      let aiResult;
 
-      if (error) throw error;
+      try {
+        const { data, error } = await supabase.functions.invoke('analyze-program', {
+          body: { action: 'generate_report', records: plays, year: new Date().getFullYear() }
+        });
+
+        if (error) throw error; // 抛出网络错误，进入 catch
+
+        let rawResult = data.result;
+
+        // 尝试清理 Markdown 标记 (以防 AI 输出 ```json)
+        if (typeof rawResult === 'string') {
+           rawResult = rawResult.replace(/```json/g, "").replace(/```/g, "").trim();
+           aiResult = JSON.parse(rawResult);
+        } else {
+           aiResult = rawResult;
+        }
+
+        // 🔥 核心步骤：阅卷检查
+        if (!validateAiResult(aiResult)) {
+           console.warn("AI 返回数据结构不完整", aiResult);
+           throw new Error("Validation Failed: Missing required fields");
+        }
+
+      } catch (aiError) {
+        console.error("AI 生成/解析失败，启用错误恢复模式:", aiError);
+        // 🔥 只要出错，就赋值错误状态，让前端显示 ErrorView
+        aiResult = { isError: true };
+      }
       
-      const aiResult = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
-      
-      // 3. 数据合并
+      // --- C. 数据合并 & 保存 ---
       const finalReport = {
-          ...aiResult,
+          ...aiResult, 
           cityVisits: accurateCityVisits,
           habits: habits,
           extraStats: extraStats 
       };
       
-      // 4. 保存到数据库 (替换掉原来的 localStorage 逻辑)
-      console.log("Saving report for user:", userId);
+      // 💾 这里只写一次保存动作，删掉你原本代码里重复的那一行 saveUserReport
+      console.log("Saving report status for user:", userId);
       await saveUserReport(userId, finalReport);
 
+      // 🚀 更新状态：这会触发步骤 1 中的 useEffect
+      // 如果 aiResult 是错误状态，此时弹窗会自动跳出
       setReportData(finalReport);
-      setNotification('success'); 
+      
+      setNotification('success');
 
     } catch (err) {
-      console.error("Report error:", err);
-      alert("生成失败，请稍后再试");
+      console.error("Critical System Error:", err);
+      alert("系统严重错误，请检查网络连接");
     } finally {
       setIsGenerating(false);
     }
