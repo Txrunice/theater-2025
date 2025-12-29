@@ -16,10 +16,13 @@ export default function ActorView({ plays }) {
   // 1. 加载数据
   useEffect(() => {
     const fetchActorData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
       // 🟢 关键：获取 favorite_at 字段，这是排序的依据
       const { data } = await supabase
         .from('actors')
-        .select('name, image, is_favorite, favorite_at');
+        .select('name, image, is_favorite, favorite_at')
+        .eq('user_id', user.id);
 
       if (data) {
         const map = {};
@@ -35,6 +38,13 @@ export default function ActorView({ plays }) {
 
   // 2. 切换喜欢状态
   const toggleFavorite = async (actorName) => {
+    // --- 获取当前用户 ID ---
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("请先登录");
+      return;
+    }
+    // --- 切换状态逻辑 ---
     const currentInfo = actorDataMap[actorName] || {};
     const oldStatus = currentInfo.is_favorite;
     const newStatus = !oldStatus;
@@ -56,10 +66,11 @@ export default function ActorView({ plays }) {
 
     // 提交数据库
     const { error } = await supabase.from('actors').upsert({
+      user_id: user.id, // 传入当前用户ID
       name: actorName,
       is_favorite: newStatus,
       favorite_at: newTime
-    }, { onConflict: 'name' });
+    }, { onConflict: 'user_id,name' });// 关键修改：告诉数据库根据这两个字段判断冲突
 
     if (error) {
       console.error('更新关注失败', error);
@@ -250,16 +261,27 @@ function ActorDetail({ name, plays, onBack, isFavorite, onToggleFavorite }) {
 
   const fetchProfile = async () => {
     setLoading(true);
-    const { data } = await supabase.from('actors').select('*').eq('name', name).single();
+    const { data: { user } } = await supabase.auth.getUser(); // 先拿用户
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('actors')
+      .select('*')
+      .eq('name', name)
+      .eq('user_id', user.id) // 关键：只查自己的
+      .maybeSingle(); // 用 maybeSingle 比 single 更稳健，查不到也不报错
+    
     if (data) setProfile(data);
     setLoading(false);
   };
 
+
   const handleSaveProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
     setSaving(true);
     const { error } = await supabase.from('actors').upsert({
-      name: name, bio: profile.bio, image: profile.image
-    }, { onConflict: 'name' });
+      user_id: user.id, name: name, bio: profile.bio, image: profile.image
+    }, { onConflict: 'user_id,name' });
     setSaving(false);
     setIsEditing(false);
     if (error) alert('保存失败: ' + error.message);
@@ -295,8 +317,12 @@ function ActorDetail({ name, plays, onBack, isFavorite, onToggleFavorite }) {
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from('posters').getPublicUrl(fileName);
       const newUrl = data.publicUrl;
+
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) throw new Error("用户未登录");
+
       setProfile(prev => ({ ...prev, image: newUrl }));
-      await supabase.from('actors').upsert({ name: name, bio: profile.bio, image: newUrl }, { onConflict: 'name' });
+      await supabase.from('actors').upsert({ user_id: currentUser.id, name: name, bio: profile.bio, image: newUrl }, { onConflict: 'user_id,name' });
     } catch (error) {
       console.error(error);
       alert('处理失败: ' + error.message);
