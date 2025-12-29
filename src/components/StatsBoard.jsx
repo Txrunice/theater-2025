@@ -404,28 +404,39 @@ export default function StatsBoard({ plays, userId }) {
           body: { action: 'generate_report', records: plays, year: new Date().getFullYear() }
         });
 
-        if (error) throw error; // 抛出网络错误，进入 catch
+        if (error) throw error;
 
         let rawResult = data.result;
 
-        // 尝试清理 Markdown 标记 (以防 AI 输出 ```json)
+        // 🔥🔥🔥 核心修复开始：解决 SyntaxError 问题 🔥🔥🔥
         if (typeof rawResult === 'string') {
-           rawResult = rawResult.replace(/```json/g, "").replace(/```/g, "").trim();
-           aiResult = JSON.parse(rawResult);
+           // 1. 去掉 markdown 标记
+           let cleanStr = rawResult.replace(/```json/g, "").replace(/```/g, "");
+           
+           // 2. 正则提取：只保留第一个 { 到最后一个 } 之间的内容
+           // 这样即使 AI 在 JSON 后面说了废话，也不会报错
+           const jsonMatch = cleanStr.match(/(\{[\s\S]*\})/);
+           if (jsonMatch) {
+               cleanStr = jsonMatch[0];
+           }
+           
+           aiResult = JSON.parse(cleanStr);
         } else {
            aiResult = rawResult;
         }
+        // 🔥🔥🔥 核心修复结束 🔥🔥🔥
 
-        // 🔥 核心步骤：阅卷检查
+        // 阅卷检查
         if (!validateAiResult(aiResult)) {
-           console.warn("AI 返回数据结构不完整", aiResult);
+           console.warn("AI 返回数据校验不通过", aiResult);
            throw new Error("Validation Failed: Missing required fields");
         }
 
       } catch (aiError) {
         console.error("AI 生成/解析失败，启用错误恢复模式:", aiError);
-        // 🔥 只要出错，就赋值错误状态，让前端显示 ErrorView
-        aiResult = { isError: true };
+        
+        // 🔥 确保这里产生了带有 isError 的对象，这样后续步骤 C 才能将其传递给 UI
+        aiResult = { isError: true, message: aiError.message };
       }
       
       // --- C. 数据合并 & 保存 ---
@@ -460,7 +471,17 @@ export default function StatsBoard({ plays, userId }) {
 
     } catch (err) {
       console.error("Critical System Error:", err);
-      alert("系统严重错误，请检查网络连接");
+      
+      // 1. 构造一个只包含错误信息的数据对象
+      const crashReport = { isError: true, message: err.message };
+      
+      // 2. 将这份“错误数据”存入状态
+      setReportData(crashReport);
+      
+      // 3. 🔥最关键的一步：强行打开弹窗！🔥
+      // 只有把这里设为 true，AnnualReport 组件才会挂载，进而显示 ErrorView
+      setShowReportModal(true); 
+
     } finally {
       setIsGenerating(false);
     }
