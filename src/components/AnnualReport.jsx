@@ -11,6 +11,11 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
   const [viewState, setViewState] = useState(null);
   const [currentSlide, setCurrentSlide] = useState(0);
 
+  // 获取用户名，如果没有则默认为 Audience
+  const userName = data?.userName || "Audience";
+  // 发件人名称
+  const senderName = "热情的冰冻生菜";
+
   React.useEffect(() => {
     if (isOpen && data) {
       if (data.isError) {
@@ -50,22 +55,70 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
             
             {/* 场景 1：信封阶段 */}
             {viewState === 'envelope' && !data.isError && (
-                <motion.div key="envelope" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0, scale: 1.5, filter: "blur(10px)" }} className="relative cursor-pointer group flex flex-col items-center justify-center h-full w-full" onClick={() => setViewState('letter')}>
+                <motion.div 
+                    key="envelope" 
+                    initial={{ scale: 0.9, opacity: 0 }} 
+                    animate={{ scale: 1, opacity: 1 }} 
+                    exit={{ opacity: 0, scale: 1.5, filter: "blur(10px)" }} 
+                    className="relative cursor-pointer group flex flex-col items-center justify-center h-full w-full" 
+                    onClick={() => setViewState('letter')}
+                >
                     <div className="relative">
-                        <div className="w-[360px] h-[240px] md:w-[600px] md:h-[400px] bg-[#e8dcc5] rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] flex items-center justify-center relative overflow-hidden transition-all duration-700 group-hover:rotate-1 group-hover:scale-105 group-hover:shadow-[0_35px_60px_-15px_rgba(192,57,43,0.4)]">
+                        {/* 信封主体容器 */}
+                        <div className="w-[360px] h-[240px] md:w-[600px] md:h-[400px] bg-[#e8dcc5] rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] flex flex-col items-center relative overflow-hidden transition-all duration-700 group-hover:rotate-1 group-hover:scale-105 group-hover:shadow-[0_35px_60px_-15px_rgba(192,57,43,0.4)]">
+                            
+                            {/* 纹理背景 */}
                             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')] opacity-50 mix-blend-multiply" />
+                            
+                            {/* 装饰性边框 (双线) */}
                             <div className="absolute top-3 left-3 right-3 bottom-3 border-4 border-double border-[#d4c5a5] pointer-events-none" />
-                            <div className="absolute top-8 right-8 w-24 h-24 md:w-32 md:h-32 border-4 border-cinnabar/40 rounded-full flex items-center justify-center rotate-[-12deg] opacity-70 mix-blend-multiply">
-                                <div className="text-xs md:text-sm text-cinnabar font-mono text-center font-bold leading-tight">THEATER<br/>ANNUAL REPORT<br/>2025</div>
+                            
+                            {/* --- 左上角：From --- */}
+                            <div className="absolute top-6 left-6 md:top-8 md:left-8 z-20 text-left opacity-80">
+                                <div className="font-mono text-[9px] md:text-[10px] text-[#1a252f]/50 uppercase tracking-widest mb-1">From</div>
+                                <div className="font-serif text-xs md:text-base text-[#1a252f] font-bold italic tracking-wide font-['Playfair_Display']">
+                                    {senderName}
+                                </div>
                             </div>
-                            <div className="w-24 h-24 md:w-32 md:h-32 bg-gradient-to-br from-cinnabar to-red-900 rounded-full shadow-lg flex items-center justify-center border-4 border-[#e8dcc5] relative z-20 group-hover:scale-110 transition-transform duration-300">
-                                <div className="absolute inset-0 rounded-full border border-white/20" />
-                                <Sparkles className="text-gold animate-pulse" size={40} />
+
+                            {/* --- 右上角：邮戳 --- */}
+                            <div className="absolute top-6 right-6 md:top-8 md:right-8 w-20 h-20 md:w-28 md:h-28 border-2 md:border-4 border-cinnabar/30 rounded-full flex items-center justify-center rotate-[-12deg] opacity-60 mix-blend-multiply z-10">
+                                <div className="text-[10px] md:text-xs text-cinnabar font-mono text-center font-bold leading-tight tracking-wider">
+                                    THEATER<br/>ANNUAL REPORT<br/>2025
+                                </div>
                             </div>
-                            <div className="absolute bottom-8 font-serif text-[#1a252f]/60 tracking-[0.4em] text-xs md:text-sm font-bold group-hover:text-cinnabar transition-colors">TAP TO OPEN</div>
+
+                            {/* --- 中上部：收件人区域 (向上移动，避开印章) --- */}
+                            <div className="absolute top-[25%] md:top-[28%] z-20 flex flex-col items-center justify-center w-full px-12">
+                                <div className="font-mono text-[8px] md:text-[10px] text-[#1a252f]/40 uppercase tracking-[0.4em] mb-3 md:mb-4">
+                                    Private & Confidential
+                                </div>
+                                <div className="relative">
+                                    <div className="font-serif text-2xl md:text-5xl text-ink-900 font-bold tracking-wide text-center transform -rotate-1 z-10 relative drop-shadow-sm">
+                                        To. {userName}
+                                    </div>
+                                    {/* 名字下方的装饰线 */}
+                                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-1/2 h-[1px] bg-cinnabar/20" />
+                                </div>
+                            </div>
+
+                            {/* --- 中下部：火漆印章 (作为开启按钮) --- */}
+                            <div className="absolute bottom-[20%] md:bottom-[18%] flex flex-col items-center justify-center z-30">
+                                <div className="w-20 h-20 md:w-24 md:h-24 bg-gradient-to-br from-cinnabar to-[#8e281f] rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.3)] flex items-center justify-center border-[3px] border-[#e4d5b7] group-hover:scale-110 group-hover:shadow-[0_0_25px_rgba(192,57,43,0.6)] transition-all duration-300 relative">
+                                    {/* 印章内部的高光和纹理 */}
+                                    <div className="absolute inset-0 rounded-full border border-white/10 opacity-50" />
+                                    <div className="absolute inset-2 rounded-full border border-black/10 opacity-30 dashed" />
+                                    <Sparkles className="text-[#ffd700] drop-shadow-md animate-pulse" size={36} strokeWidth={1.5} />
+                                </div>
+                            </div>
+                            
+                            {/* --- 底部：提示文字 --- */}
+                            <div className="absolute bottom-5 md:bottom-6 font-serif text-[#1a252f]/30 tracking-[0.4em] text-[9px] md:text-[10px] font-bold group-hover:text-cinnabar transition-colors">
+                                TAP TO OPEN
+                            </div>
                         </div>
                     </div>
-                    {/* ✅ 添加作者水印 - 信封页 */}
+                    {/* 作者水印 */}
                     <AuthorMark />
                 </motion.div>
             )}
@@ -75,7 +128,14 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                 <motion.div key="letter" initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ x: -100, opacity: 0, transition: { duration: 0.5 } }} className="relative w-full max-w-2xl md:max-w-4xl mx-4">
                     <div className="bg-[#fcf5e5] text-ink-900 p-10 md:p-16 rounded shadow-2xl relative font-serif overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-4 bg-[repeating-linear-gradient(45deg,#c0392b,#c0392b_10px,#fcf5e5_10px,#fcf5e5_20px,#1a252f_20px,#1a252f_30px,#fcf5e5_30px,#fcf5e5_40px)]" />
-                        <div className="mb-8 mt-4 flex justify-between items-end border-b border-ink-900/10 pb-6"><h2 className="text-2xl md:text-3xl font-bold tracking-widest uppercase text-ink-900">Dear Audience,</h2></div>
+                        
+                        {/* --- 修改：动态称呼 --- */}
+                        <div className="mb-8 mt-4 flex justify-between items-end border-b border-ink-900/10 pb-6">
+                            <h2 className="text-2xl md:text-3xl font-bold tracking-widest uppercase text-ink-900">
+                                Dear {userName},
+                            </h2>
+                        </div>
+
                         <div className="prose prose-lg prose-p:text-ink-800 prose-p:leading-loose text-justify max-h-[60vh] overflow-y-auto custom-scrollbar pr-4 mb-10">
                             <div className="font-serif">
                                 {data.letter && data.letter.replace(/\\n/g, '\n').split(/\n+/).map((para, i) => (
@@ -86,7 +146,7 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                         <div className="mt-12 pt-8 border-t border-ink-900/10 flex justify-end">
                             <div className="relative pr-4">
                                 <div className="font-serif text-2xl md:text-3xl text-ink-900 font-bold italic tracking-wider transform -rotate-2 z-10 relative" style={{ fontFamily: '"Playfair Display", "Songti SC", "SimSun", serif' }}>
-                                    AI 热情的冰冻生菜
+                                    AI {senderName}
                                 </div>
                                 <div className="font-mono text-xs text-gray-400 tracking-[0.2em] text-right mt-2 uppercase">
                                     {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).toUpperCase()}
@@ -97,13 +157,13 @@ export default function AnnualReport({ isOpen, onClose, data, onRegenerate }) {
                              <button onClick={onRegenerate} className="flex items-center gap-2 text-sm text-gray-400 hover:text-cinnabar transition-colors group"><Repeat size={14} className="group-hover:rotate-180 transition-transform" /> Rewrite</button>
                             <button onClick={() => setViewState('slides')} className="bg-ink-900 text-[#fcf5e5] px-10 py-4 rounded-full flex items-center gap-3 hover:bg-cinnabar hover:shadow-xl transition-all text-lg font-bold"><span>Start The Show</span><ChevronRight size={20} /></button>
                         </div>
-                        {/* ✅ 添加作者水印 - 信件页 (位置微调) */}
-                        <div className="absolute bottom-2 right-4 text-[9px] text-ink-900/20 font-serif z-50 pointer-events-none select-none tracking-widest">Designed by 热情的冰冻生菜</div>
+                        {/* ✅ 添加作者水印 - 信件页 */}
+                        <div className="absolute bottom-2 right-4 text-[9px] text-ink-900/20 font-serif z-50 pointer-events-none select-none tracking-widest">Designed by {senderName}</div>
                     </div>
                 </motion.div>
             )}
 
-            {/* 场景 3：幻灯片阶段 */}
+            {/* 场景 3：幻灯片阶段 (保持不变) */}
             {viewState === 'slides' && !data.isError && (
                 <motion.div key="slides" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden">
                     <div className="w-[92vw] max-w-lg md:max-w-5xl h-[85vh] bg-[#0b0c10] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] relative flex flex-col">

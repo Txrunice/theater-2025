@@ -285,6 +285,11 @@ export default function StatsBoard({ plays, userId }) {
     setShouldAutoOpen(true);
 
     try {
+
+      const { data: { user } } = await supabase.auth.getUser();
+      // 优先取 display_name，取不到则回退到 "Audience"
+      const currentUserName = user?.user_metadata?.display_name || "Audience";
+      console.log("正在为用户生成报告:", currentUserName);
       // 🔥 1. 获取精简版演员表 (按“特别关注”排序)
       const { data: actorsData } = await supabase
         .from('actors')
@@ -426,6 +431,7 @@ export default function StatsBoard({ plays, userId }) {
       // --- C. 数据合并 & 保存 ---
       const finalReport = {
           ...aiResult, 
+          userName: currentUserName,
           cityVisits: accurateCityVisits,
           habits: habits,
           extraStats: extraStats,
