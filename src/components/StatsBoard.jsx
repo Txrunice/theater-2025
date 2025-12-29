@@ -285,6 +285,92 @@ export default function StatsBoard({ plays, userId }) {
     setShouldAutoOpen(true);
 
     try {
+      // 🔥 1. 获取精简版演员表 (按“特别关注”排序)
+      const { data: actorsData } = await supabase
+        .from('actors')
+        .select('name, is_favorite') // 只取名字和关注状态，极小
+        .eq('user_id', userId) 
+      // 创建一个快速查找表: { "张三": true, "李四": false }
+      const favMap = {};
+      (actorsData || []).forEach(a => {
+        favMap[a.name] = a.is_favorite;
+      });
+
+      // 2. 遍历 plays 统计场次 (复刻 ActorView 逻辑)
+      const actorStatsMap = {};
+      plays.forEach(play => {
+
+        // A. 定义权重逻辑：演唱会权重 0.1，其他权重 1
+        // 参考你提供的 ActorView 逻辑，多维度判断是否为演唱会
+        const isConcert = 
+            play.category === '演唱会' || 
+            play.type === '演唱会' || 
+            (play.title && play.title.includes('演唱会'));
+            
+        const weightVal = isConcert ? 0.1 : 1;
+
+        // 确保 cast_list 存在且是数组
+        if (play.cast_list && Array.isArray(play.cast_list)) {
+          // 单部剧内去重
+          const uniqueNames = new Set();
+          play.cast_list.forEach(c => {
+            if (c.name) uniqueNames.add(c.name);
+          });
+          
+          uniqueNames.forEach(name => {
+            // 初始化对象结构
+            if (!actorStatsMap[name]) {
+                actorStatsMap[name] = { count: 0, weight: 0 };
+            }
+            // 累加场次
+            actorStatsMap[name].count += 1;
+            // 累加权重
+            actorStatsMap[name].weight += weightVal;
+          });
+        }
+      });
+
+      // 🔥 3. 合并数据并筛选
+      const sortedActors = Object.entries(actorStatsMap)
+        .map(([name, stats]) => ({
+          name,
+          count: stats.count,   // 展示用的实际场次
+          weight: stats.weight, // 排序/筛选用的权重
+          is_favorite: !!favMap[name] 
+        }))
+        // 🟢 筛选逻辑：权重 >= 1 或者 是特别关注
+        // (比如：看了10场演唱会权重才=1，或者看了1场话剧权重=1，都会显示)
+        .filter(actor => actor.weight >= 1 || actor.is_favorite) 
+        
+        // 排序优先级: 
+        // 1. 特别关注优先
+        // 2. 按权重(weight)降序，而不是按纯场次
+        .sort((a, b) => {
+          if (a.is_favorite !== b.is_favorite) {
+            return a.is_favorite ? -1 : 1; 
+          }
+          // 如果权重一样，再按场次排，否则按权重排
+          if (b.weight === a.weight) {
+              return b.count - a.count;
+          }
+          return b.weight - a.weight; 
+        });
+
+
+
+      // 🔥 2. 预先统计剧场频次
+      const venueCounts = {};
+      plays.forEach(p => {
+          if (p.venue) {
+              const v = p.venue.trim();
+              venueCounts[v] = (venueCounts[v] || 0) + 1;
+          }
+      });
+      // 转为精简数组: [{name: '大剧院', count: 5}, ...]
+      const venueStats = Object.entries(venueCounts)
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count); // 按次数从多到少排序
+
       // --- A. 前端计算 (这些永远不会错，先算好) ---
       const accurateCityVisits = getCityVisits(plays);
       const habits = calculateHabits(plays);
@@ -342,8 +428,19 @@ export default function StatsBoard({ plays, userId }) {
           ...aiResult, 
           cityVisits: accurateCityVisits,
           habits: habits,
-          extraStats: extraStats 
+          extraStats: extraStats,
+          credits: {
+              actors: sortedActors,
+              venues: venueStats 
+          }
       };
+
+      if (userId) {
+          console.log("Saving report for user:", userId);
+          await saveUserReport(userId, finalReport);
+      } else {
+          console.warn("未找到 userId，报告仅在本地显示，不会保存到数据库。");
+      }
       
       // 💾 这里只写一次保存动作，删掉你原本代码里重复的那一行 saveUserReport
       console.log("Saving report status for user:", userId);
